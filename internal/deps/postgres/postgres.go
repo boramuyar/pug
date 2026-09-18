@@ -23,7 +23,9 @@ func createPool(ctx context.Context, addr string) (*pgxpool.Pool, error) {
 		return nil, err
 	}
 
-	dbPoolConfig.ConnConfig.Tracer = otelpgx.NewTracer()
+	// otelpgx names spans by the SQL's first word by default, which is "--" for
+	// every sqlc query (they open with "-- name: X"), so keep the full statement.
+	dbPoolConfig.ConnConfig.Tracer = otelpgx.NewTracer(otelpgx.WithFullSQLInSpanName(), otelpgx.WithQuerySpanNamePrefix())
 
 	pool, err := pgxpool.NewWithConfig(ctx, dbPoolConfig)
 	if err != nil {
