@@ -58,7 +58,6 @@ import (
 	"github.com/pug-sh/pug/internal/geo"
 	"github.com/pug-sh/pug/internal/slogx"
 	"github.com/pug-sh/pug/internal/useragent"
-	"golang.org/x/net/http2"
 )
 
 func Run(ctx context.Context) error {
@@ -262,9 +261,6 @@ func start(ctx context.Context, d *deps) error {
 		Addr:              ":" + d.port,
 		Handler:           pogrpc.WithCorrelationID(pogrpc.WithRequestLimits(mux)),
 		ReadHeaderTimeout: 30 * time.Second,
-	}
-	if err := http2.ConfigureServer(server, &http2.Server{}); err != nil {
-		return err
 	}
 
 	go func() {
