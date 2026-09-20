@@ -32,6 +32,18 @@ const (
 // return different sets of keys.
 type Location map[string]string
 
+// IsLocationProp reports whether key asserts a place. $timezone is excluded
+// even though a provider emits one: the mobile SDKs send it on every event, so
+// counting it would withhold geo from every relayed event. $ip is an identifier.
+func IsLocationProp(key string) bool {
+	switch key {
+	case PropContinent, PropCountry, PropRegion, PropCity,
+		PropPostalCode, PropMetroCode, PropLatitude, PropLongitude:
+		return true
+	}
+	return false
+}
+
 // Common IP headers, ordered by trust level.
 const (
 	HeaderCFConnectingIP = "CF-Connecting-IP"

@@ -46,6 +46,7 @@ var (
 	cookielessSessionDegradedCounter metric.Int64Counter
 	cookielessIdentitySourceCounter  metric.Int64Counter
 	botTaggedCounter                 metric.Int64Counter
+	geoCallerSuppliedCounter         metric.Int64Counter
 )
 
 func init() {
@@ -77,6 +78,10 @@ func init() {
 	botTaggedCounter, _ = meter.Int64Counter(
 		"events.bot_tagged_total",
 		metric.WithDescription("Events tagged $bot=true at ingest. signal=user_agent: the User-Agent matched the crawler-user-agents list ($bot_reason is the crawler's name, e.g. HeadlessChrome). signal=asn: CF-ASN named a datacenter-only network ($bot_reason=asn:<n>). Only $platform=web events on public-key requests are ever tagged; nothing is dropped."),
+	)
+	geoCallerSuppliedCounter, _ = meter.Int64Counter(
+		"events.geo_caller_supplied_total",
+		metric.WithDescription("Events whose caller-supplied location was honoured, so header-derived geo was withheld. Private-key requests only — expected for a backend forwarding a visitor's location, which the CDN headers describe as the backend's. Nothing counts when the request carried no CDN geo headers: there was nothing to withhold, and the caller's location is kept either way. Public-key geo is always overwritten and never counts here."),
 	)
 }
 
@@ -220,8 +225,8 @@ func (s *Server) BatchCreate(
 		// permanently unusable timestamps instead of seeing a bare accepted=0.
 		return batchResponse(0, drops), nil
 	}
-	s.enrichGeo(ctx, projectID, req.Header(), events)
-	s.enrichUserAgent(ctx, projectID, req.Header(), events)
+	s.enrichGeo(ctx, projectID, principal.AuthType, req.Header(), events)
+	s.enrichUserAgent(ctx, projectID, principal.AuthType, req.Header(), events)
 	s.enrichBot(ctx, projectID, principal.AuthType, req.Header(), events)
 	s.enrichBotScore(ctx, projectID, req.Header(), events)
 	s.enrichVerifiedBot(ctx, projectID, req.Header(), events)
@@ -234,7 +239,13 @@ func (s *Server) BatchCreate(
 	return batchResponse(len(events), drops), nil
 }
 
-func (s *Server) enrichUserAgent(ctx context.Context, projectID string, h http.Header, events []*eventsv1.Event) {
+// Scoped to public-key requests: on a private-key request the User-Agent is the
+// customer's HTTP client, so parsing it writes "curl" as the visitor's browser.
+// A relay sets $browser/$os/$device/$mobile per event instead; those already win.
+func (s *Server) enrichUserAgent(ctx context.Context, projectID string, authType rpc.AuthType, h http.Header, events []*eventsv1.Event) {
+	if authType != rpc.AuthTypePublicKey {
+		return
+	}
 	if s.uaParser == nil {
 		slog.WarnContext(ctx, "user-agent enrichment skipped: parser not initialized", slog.String("project_id", projectID))
 		return
@@ -258,7 +269,10 @@ func (s *Server) enrichUserAgent(ctx context.Context, projectID string, h http.H
 	}
 }
 
-func (s *Server) enrichGeo(ctx context.Context, projectID string, h http.Header, events []*eventsv1.Event) {
+// CDN headers describe whoever opened the connection — the customer's backend on
+// a private-key request, so there a caller-supplied location wins whole; mixing
+// it with edge keys would name a place that does not exist.
+func (s *Server) enrichGeo(ctx context.Context, projectID string, authType rpc.AuthType, h http.Header, events []*eventsv1.Event) {
 	// The visitor IP is personal data and must never be persisted: strip the
 	// canonical $ip key from every event so it can never reach NATS/ClickHouse,
 	// and count any occurrence. The strip targets the canonical key our SDKs and
@@ -284,7 +298,13 @@ func (s *Server) enrichGeo(ctx context.Context, projectID string, h http.Header,
 		slog.DebugContext(ctx, "geo location empty, skipping enrichment", slog.String("project_id", projectID))
 		return
 	}
+	trustCaller := authType == rpc.AuthTypePrivateKey
+	withheld := 0
 	for _, event := range events {
+		if trustCaller && hasLocationProp(event.AutoProperties) {
+			withheld++
+			continue
+		}
 		if event.AutoProperties == nil {
 			event.AutoProperties = make(map[string]*commonv1.PropertyValue, len(loc))
 		}
@@ -292,6 +312,30 @@ func (s *Server) enrichGeo(ctx context.Context, projectID string, h http.Header,
 			event.AutoProperties[k] = autoprop.PropertyValue(ctx, projectID, k, v)
 		}
 	}
+	if withheld > 0 {
+		slog.DebugContext(ctx, "caller-supplied location honoured, header geo withheld",
+			slog.String("project_id", projectID), slog.Int("events", withheld))
+		geoCallerSuppliedCounter.Add(ctx, int64(withheld), metric.WithAttributes(
+			attribute.String("project_id", projectID),
+		))
+	}
+}
+
+// hasLocationProp ignores empty and unrenderable values: they would suppress
+// edge geo and store nothing. A $country outside the ISO set is junk rather
+// than a claim, and the rollup dimension it keys is permanent.
+func hasLocationProp(props map[string]*commonv1.PropertyValue) bool {
+	for k := range props {
+		if !geo.IsLocationProp(k) {
+			continue
+		}
+		v := autoPropString(props, k)
+		if v == "" || (k == geo.PropCountry && !geo.IsCountryCode(v)) {
+			continue
+		}
+		return true
+	}
+	return false
 }
 
 func (s *Server) enrichBotScore(ctx context.Context, projectID string, h http.Header, events []*eventsv1.Event) {

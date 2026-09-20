@@ -29,7 +29,8 @@ var countrySet = func() map[string]struct{} {
 
 // IsCountryCode reports whether v is a country code the geo enricher can
 // produce. $country survives from the client payload whenever enrichment
-// resolves nothing, so a two-letter shape check is not enough to trust it.
+// resolves nothing, and gates the private-key withhold in enrichGeo, so a
+// two-letter shape check is not enough to trust it.
 func IsCountryCode(v string) bool {
 	_, ok := countrySet[v]
 	return ok

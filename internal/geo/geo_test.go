@@ -186,3 +186,26 @@ func TestParseClientIP_UnmapsIPv4InIPv6(t *testing.T) {
 		}
 	}
 }
+
+// TestIsLocationProp pins the membership enrichGeo's withhold decision reads.
+// $timezone is the one a provider emits that must NOT count: the mobile SDKs
+// set it on every event, so counting it withholds geo from every relayed event.
+func TestIsLocationProp(t *testing.T) {
+	for prop, want := range map[string]bool{
+		PropContinent:  true,
+		PropCountry:    true,
+		PropRegion:     true,
+		PropCity:       true,
+		PropPostalCode: true,
+		PropMetroCode:  true,
+		PropLatitude:   true,
+		PropLongitude:  true,
+		PropTimezone:   false,
+		PropIP:         false,
+		"$browser":     false,
+	} {
+		if got := IsLocationProp(prop); got != want {
+			t.Errorf("IsLocationProp(%q) = %v, want %v", prop, got, want)
+		}
+	}
+}
