@@ -220,8 +220,8 @@ func (s *Server) BatchCreate(
 		// permanently unusable timestamps instead of seeing a bare accepted=0.
 		return batchResponse(0, drops), nil
 	}
-	s.enrichGeo(ctx, projectID, req.Header(), events)
-	s.enrichUserAgent(ctx, projectID, req.Header(), events)
+	s.enrichGeo(ctx, projectID, principal.AuthType, req.Header(), events)
+	s.enrichUserAgent(ctx, projectID, principal.AuthType, req.Header(), events)
 	s.enrichBot(ctx, projectID, principal.AuthType, req.Header(), events)
 	s.enrichBotScore(ctx, projectID, req.Header(), events)
 	s.enrichVerifiedBot(ctx, projectID, req.Header(), events)
@@ -234,7 +234,13 @@ func (s *Server) BatchCreate(
 	return batchResponse(len(events), drops), nil
 }
 
-func (s *Server) enrichUserAgent(ctx context.Context, projectID string, h http.Header, events []*eventsv1.Event) {
+// Scoped to public-key requests: on a private-key request the User-Agent is the
+// customer's HTTP client, so parsing it writes "curl" as the visitor's browser.
+// A relay sets $browser/$os/$device/$mobile per event instead; those already win.
+func (s *Server) enrichUserAgent(ctx context.Context, projectID string, authType rpc.AuthType, h http.Header, events []*eventsv1.Event) {
+	if authType != rpc.AuthTypePublicKey {
+		return
+	}
 	if s.uaParser == nil {
 		slog.WarnContext(ctx, "user-agent enrichment skipped: parser not initialized", slog.String("project_id", projectID))
 		return
@@ -258,7 +264,10 @@ func (s *Server) enrichUserAgent(ctx context.Context, projectID string, h http.H
 	}
 }
 
-func (s *Server) enrichGeo(ctx context.Context, projectID string, h http.Header, events []*eventsv1.Event) {
+// CDN headers describe whoever opened the connection — the customer's backend on a
+// private-key request, never the visitor — so geo enrichment is skipped there. Such
+// an event keeps the location it was sent with, or has none.
+func (s *Server) enrichGeo(ctx context.Context, projectID string, authType rpc.AuthType, h http.Header, events []*eventsv1.Event) {
 	// The visitor IP is personal data and must never be persisted: strip the
 	// canonical $ip key from every event so it can never reach NATS/ClickHouse,
 	// and count any occurrence. The strip targets the canonical key our SDKs and
@@ -270,6 +279,10 @@ func (s *Server) enrichGeo(ctx context.Context, projectID string, h http.Header,
 			ipStrippedCounter.Add(ctx, 1, metric.WithAttributes(attribute.String("source", "client")))
 		}
 		delete(event.AutoProperties, geo.PropIP)
+	}
+
+	if authType == rpc.AuthTypePrivateKey {
+		return
 	}
 
 	loc := s.geoProvider.Locate(h)

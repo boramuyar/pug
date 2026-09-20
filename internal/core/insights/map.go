@@ -35,9 +35,10 @@ func topKRequestForMap(req *insightsv1.QueryRequest) *insightsv1.QueryRequest {
 
 // keepISOCountries drops every row a choropleth cannot place, so the response
 // matches the ISO alpha-2 contract it advertises. That means membership in the
-// real code set, not a two-letter shape check: the enricher overwrites $country
-// only when the geo provider resolves one, so "USA", "unknown" and unassigned
-// codes like "ZZ" all survive ingestion from a client payload.
+// real code set, not a two-letter shape check: a client-supplied $country
+// survives ingestion on every private-key request and whenever enrichment
+// resolves nothing, so "USA", "unknown" and unassigned codes like "ZZ" all
+// reach the query.
 //
 // Ranking happens before this filter, so a project flooded with junk codes can
 // still push real countries past mapCountryLimit.

@@ -176,7 +176,7 @@ func TestEnrichGeo(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			s := &Server{geoProvider: stubProvider{loc: tt.loc}}
-			s.enrichGeo(context.Background(), "test-project", http.Header{}, tt.events)
+			s.enrichGeo(context.Background(), "test-project", rpc.AuthTypePublicKey, http.Header{}, tt.events)
 
 			for _, event := range tt.events {
 				if tt.want == nil {
@@ -198,6 +198,122 @@ func TestEnrichGeo(t *testing.T) {
 						t.Errorf("AutoProperties[%q] = %q, want %q", k, got, wantV)
 					}
 				}
+			}
+		})
+	}
+}
+
+// Private-key requests never take header geo: the CDN headers describe the
+// customer's backend, so an event keeps the location it came with, or has none.
+func TestEnrichGeoPrivateKeyIgnoresHeaderGeo(t *testing.T) {
+	edge := geo.Location{geo.PropCountry: "US", geo.PropCity: "San Francisco"}
+
+	tests := []struct {
+		name   string
+		events []*eventsv1.Event
+		want   map[string]string
+	}{
+		{
+			"caller location is kept",
+			[]*eventsv1.Event{{AutoProperties: propMap(map[string]string{geo.PropCountry: "DE", geo.PropCity: "Berlin"})}},
+			map[string]string{geo.PropCountry: "DE", geo.PropCity: "Berlin"},
+		},
+		{
+			"no caller location — the event stores none",
+			[]*eventsv1.Event{{}},
+			nil,
+		},
+		{
+			"a partial caller location is not completed from the edge",
+			[]*eventsv1.Event{{AutoProperties: propMap(map[string]string{geo.PropCity: "Berlin"})}},
+			map[string]string{geo.PropCity: "Berlin"},
+		},
+		{
+			"non-geo properties are untouched",
+			[]*eventsv1.Event{{AutoProperties: propMap(map[string]string{"$browser": "Chrome"})}},
+			map[string]string{"$browser": "Chrome"},
+		},
+		{
+			// Junk reads as "not supplied" on the metric, but is never rewritten.
+			"a non-ISO country is left as sent",
+			[]*eventsv1.Event{{AutoProperties: propMap(map[string]string{geo.PropCountry: "USA"})}},
+			map[string]string{geo.PropCountry: "USA"},
+		},
+		{
+			"$ip is still stripped",
+			[]*eventsv1.Event{{AutoProperties: propMap(map[string]string{geo.PropCountry: "DE", geo.PropIP: "9.9.9.9"})}},
+			map[string]string{geo.PropCountry: "DE"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			s := &Server{geoProvider: stubProvider{loc: edge}}
+			s.enrichGeo(context.Background(), "test-project", rpc.AuthTypePrivateKey, http.Header{}, tt.events)
+
+			for _, event := range tt.events {
+				assertProps(t, event, tt.want)
+			}
+		})
+	}
+}
+
+// TestBatchCreateWiresAuthTypedEnrichers pins that BatchCreate passes the real
+// principal.AuthType to enrichGeo and enrichUserAgent. Every other test calls
+// them directly with a literal, so hardcoding either argument leaves the whole
+// suite green and the gate silently dead. A private-key caller's own $country
+// survives because nothing overwrites it, not because anything applied it.
+func TestBatchCreateWiresAuthTypedEnrichers(t *testing.T) {
+	uaParser, err := useragent.NewParser()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, tt := range []struct {
+		authType    rpc.AuthType
+		want        string
+		wantBrowser string
+	}{
+		{rpc.AuthTypePublicKey, "US", "Google Chrome"},
+		{rpc.AuthTypePrivateKey, "DE", ""},
+		{rpc.AuthTypeJWT, "US", ""},
+	} {
+		t.Run(string(tt.authType), func(t *testing.T) {
+			js := &stubJetStream{}
+			s := &Server{
+				publisher:   coreevents.NewPublisher(js),
+				geoProvider: stubProvider{loc: geo.Location{geo.PropCountry: "US"}},
+				uaParser:    uaParser,
+			}
+			req := connect.NewRequest(&eventsv1.BatchCreateRequest{
+				Events: []*eventsv1.Event{{
+					EventId:        proto.String(uuid.NewString()),
+					DistinctId:     proto.String("u1"),
+					Kind:           proto.String("page_view"),
+					OccurTime:      timestamppb.New(time.Unix(1700000000, 0)),
+					SessionId:      proto.String(uuid.NewString()),
+					AutoProperties: propMap(map[string]string{geo.PropCountry: "DE"}),
+				}},
+			})
+			req.Header().Set("User-Agent", chromeWindowsUA)
+			ctx := authn.SetInfo(context.Background(), &rpc.Principal{
+				AuthType: tt.authType,
+				Project:  &dbread.Project{ID: "test-project"},
+			})
+
+			if _, err := s.BatchCreate(ctx, req); err != nil {
+				t.Fatalf("BatchCreate: %v", err)
+			}
+
+			var batch eventsv1.EventBatch
+			if err := proto.Unmarshal(js.data, &batch); err != nil {
+				t.Fatalf("unmarshal published batch: %v", err)
+			}
+			published := batch.GetEvents()[0].AutoProperties
+			if got := propString(published[geo.PropCountry]); got != tt.want {
+				t.Errorf("published $country = %q, want %q — is principal.AuthType still passed to enrichGeo?", got, tt.want)
+			}
+			if got := propString(published[useragent.PropBrowser]); got != tt.wantBrowser {
+				t.Errorf("published $browser = %q, want %q — is principal.AuthType still passed to enrichUserAgent?", got, tt.wantBrowser)
 			}
 		})
 	}
@@ -302,12 +418,24 @@ func TestEnrichUserAgent(t *testing.T) {
 			if tt.uaHeader != "" {
 				h.Set("User-Agent", tt.uaHeader)
 			}
-			s.enrichUserAgent(context.Background(), "test-project", h, tt.events)
+			s.enrichUserAgent(context.Background(), "test-project", rpc.AuthTypePublicKey, h, tt.events)
 			for _, event := range tt.events {
 				assertProps(t, event, tt.want)
 			}
 		})
 	}
+
+	// A relay's User-Agent is its HTTP client: uap-go parses curl/okhttp into a
+	// $browser, so an ungated enricher names the transport as the visitor's.
+	t.Run("private key derives nothing", func(t *testing.T) {
+		for _, ua := range []string{chromeWindowsUA, "curl/8.1.2"} {
+			h := http.Header{}
+			h.Set("User-Agent", ua)
+			events := []*eventsv1.Event{{}}
+			s.enrichUserAgent(context.Background(), "test-project", rpc.AuthTypePrivateKey, h, events)
+			assertProps(t, events[0], nil)
+		}
+	})
 }
 
 func TestEnrichBotScore(t *testing.T) {
@@ -517,13 +645,13 @@ func TestEnrichGeoAndUserAgentAndBotScore(t *testing.T) {
 	h.Set(cfHeaderVerifiedBot, "false")
 
 	// Same order as BatchCreate: geo, UA, bot score, verified bot.
-	s.enrichGeo(context.Background(), "test-project", h, events)
-	s.enrichUserAgent(context.Background(), "test-project", h, events)
+	s.enrichGeo(context.Background(), "test-project", rpc.AuthTypePublicKey, h, events)
+	s.enrichUserAgent(context.Background(), "test-project", rpc.AuthTypePublicKey, h, events)
 	s.enrichBotScore(context.Background(), "test-project", h, events)
 	s.enrichVerifiedBot(context.Background(), "test-project", h, events)
 
 	want := map[string]string{
-		// Geo props (always overwrite).
+		// Geo props (public key → always overwrite).
 		geo.PropCountry: "US",
 		geo.PropCity:    "San Francisco",
 		// UA props (skip existing keys — client-supplied OS preserved).
