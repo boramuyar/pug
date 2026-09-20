@@ -203,70 +203,52 @@ func TestEnrichGeo(t *testing.T) {
 	}
 }
 
-func TestEnrichGeoPrivateKeyCallerSupplied(t *testing.T) {
+// Private-key requests never take header geo: the CDN headers describe the
+// customer's backend, so an event keeps the location it came with, or has none.
+func TestEnrichGeoPrivateKeyIgnoresHeaderGeo(t *testing.T) {
 	edge := geo.Location{geo.PropCountry: "US", geo.PropCity: "San Francisco"}
 
 	tests := []struct {
 		name   string
-		loc    geo.Location
 		events []*eventsv1.Event
 		want   map[string]string
 	}{
 		{
-			"caller location wins",
-			edge,
-			[]*eventsv1.Event{{AutoProperties: propMap(map[string]string{geo.PropCountry: "DE"})}},
-			map[string]string{geo.PropCountry: "DE"},
+			"caller location is kept",
+			[]*eventsv1.Event{{AutoProperties: propMap(map[string]string{geo.PropCountry: "DE", geo.PropCity: "Berlin"})}},
+			map[string]string{geo.PropCountry: "DE", geo.PropCity: "Berlin"},
 		},
 		{
-			"one caller key withholds every edge key",
-			edge,
+			"no caller location — the event stores none",
+			[]*eventsv1.Event{{}},
+			nil,
+		},
+		{
+			"a partial caller location is not completed from the edge",
 			[]*eventsv1.Event{{AutoProperties: propMap(map[string]string{geo.PropCity: "Berlin"})}},
 			map[string]string{geo.PropCity: "Berlin"},
 		},
 		{
-			"no caller location — edge geo applies",
-			edge,
-			[]*eventsv1.Event{{}},
-			map[string]string{geo.PropCountry: "US", geo.PropCity: "San Francisco"},
-		},
-		{
-			"non-geo properties do not count as a location",
-			edge,
+			"non-geo properties are untouched",
 			[]*eventsv1.Event{{AutoProperties: propMap(map[string]string{"$browser": "Chrome"})}},
-			map[string]string{geo.PropCountry: "US", geo.PropCity: "San Francisco", "$browser": "Chrome"},
+			map[string]string{"$browser": "Chrome"},
 		},
 		{
-			"empty caller value does not withhold",
-			geo.Location{geo.PropCountry: "US"},
-			[]*eventsv1.Event{{AutoProperties: propMap(map[string]string{geo.PropCountry: ""})}},
-			map[string]string{geo.PropCountry: "US"},
+			// Junk reads as "not supplied" on the metric, but is never rewritten.
+			"a non-ISO country is left as sent",
+			[]*eventsv1.Event{{AutoProperties: propMap(map[string]string{geo.PropCountry: "USA"})}},
+			map[string]string{geo.PropCountry: "USA"},
 		},
 		{
-			"$ip still stripped when caller supplies a location",
-			edge,
+			"$ip is still stripped",
 			[]*eventsv1.Event{{AutoProperties: propMap(map[string]string{geo.PropCountry: "DE", geo.PropIP: "9.9.9.9"})}},
 			map[string]string{geo.PropCountry: "DE"},
-		},
-		{
-			// The mobile SDKs set one on every event, so counting it would
-			// withhold geo from every relayed event.
-			"$timezone does not count as a location",
-			geo.Location{geo.PropCountry: "US", geo.PropTimezone: "America/Los_Angeles"},
-			[]*eventsv1.Event{{AutoProperties: propMap(map[string]string{geo.PropTimezone: "Asia/Kolkata"})}},
-			map[string]string{geo.PropCountry: "US", geo.PropTimezone: "America/Los_Angeles"},
-		},
-		{
-			"junk $country does not withhold",
-			edge,
-			[]*eventsv1.Event{{AutoProperties: propMap(map[string]string{geo.PropCountry: "USA"})}},
-			map[string]string{geo.PropCountry: "US", geo.PropCity: "San Francisco"},
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			s := &Server{geoProvider: stubProvider{loc: tt.loc}}
+			s := &Server{geoProvider: stubProvider{loc: edge}}
 			s.enrichGeo(context.Background(), "test-project", rpc.AuthTypePrivateKey, http.Header{}, tt.events)
 
 			for _, event := range tt.events {
@@ -274,41 +256,13 @@ func TestEnrichGeoPrivateKeyCallerSupplied(t *testing.T) {
 			}
 		})
 	}
-
-	t.Run("withheld per event, not per batch", func(t *testing.T) {
-		events := []*eventsv1.Event{
-			{AutoProperties: propMap(map[string]string{geo.PropCountry: "DE"})},
-			{},
-		}
-		s := &Server{geoProvider: stubProvider{loc: edge}}
-		s.enrichGeo(context.Background(), "test-project", rpc.AuthTypePrivateKey, http.Header{}, events)
-
-		assertProps(t, events[0], map[string]string{geo.PropCountry: "DE"})
-		assertProps(t, events[1], map[string]string{geo.PropCountry: "US", geo.PropCity: "San Francisco"})
-	})
-
-	// A JSON backend sends coordinates as numbers, so the withhold must read
-	// every slot autoprop.String renders — not just StringValue.
-	t.Run("non-string slots", func(t *testing.T) {
-		events := []*eventsv1.Event{
-			{AutoProperties: map[string]*commonv1.PropertyValue{
-				geo.PropLatitude: {Value: &commonv1.PropertyValue_DoubleValue{DoubleValue: 52.52}},
-			}},
-			{AutoProperties: map[string]*commonv1.PropertyValue{geo.PropCountry: {}}},
-		}
-		s := &Server{geoProvider: stubProvider{loc: edge}}
-		s.enrichGeo(context.Background(), "test-project", rpc.AuthTypePrivateKey, http.Header{}, events)
-
-		assertProps(t, events[0], map[string]string{geo.PropLatitude: "52.52"})
-		assertProps(t, events[1], map[string]string{geo.PropCountry: "US", geo.PropCity: "San Francisco"})
-	})
 }
 
 // TestBatchCreateWiresAuthTypedEnrichers pins that BatchCreate passes the real
 // principal.AuthType to enrichGeo and enrichUserAgent. Every other test calls
 // them directly with a literal, so hardcoding either argument leaves the whole
-// suite green and the gate silently dead. The two polarities differ on purpose:
-// geo falls back to server-owned, the user agent to deriving nothing.
+// suite green and the gate silently dead. A private-key caller's own $country
+// survives because nothing overwrites it, not because anything applied it.
 func TestBatchCreateWiresAuthTypedEnrichers(t *testing.T) {
 	uaParser, err := useragent.NewParser()
 	if err != nil {
