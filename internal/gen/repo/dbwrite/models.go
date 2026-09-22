@@ -129,6 +129,8 @@ type Customer struct {
 	PictureUri      string
 	UpdateTime      pgtype.Timestamptz
 	EmailVerifiedAt pgtype.Timestamptz
+	DisabledAt      pgtype.Timestamptz
+	SessionVersion  int64
 }
 
 type CustomerIdentity struct {
@@ -189,6 +191,17 @@ type EmailActionToken struct {
 	ExpiresAt       pgtype.Timestamptz
 	ConsumedAt      pgtype.Timestamptz
 	CreateTime      pgtype.Timestamptz
+}
+
+type InstanceAudit struct {
+	ID         string
+	CreateTime pgtype.Timestamptz
+	ActorID    string
+	Action     string
+	TargetType string
+	TargetID   string
+	Reason     string
+	Details    map[string]any
 }
 
 type Org struct {

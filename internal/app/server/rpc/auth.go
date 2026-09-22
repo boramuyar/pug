@@ -268,6 +268,22 @@ func WithJWTAuth(jwtKey []byte, queries *dbread.Queries) authn.AuthFunc {
 			}
 			return nil, unauthenticated(ctx, "invalid authorization")
 		}
+		if customer.DisabledAt.Valid {
+			return nil, unauthenticated(ctx, "invalid authorization")
+		}
+		if claims, ok := parsedJWT.Claims.(jwt.MapClaims); ok {
+			version := int64(0) // Tokens issued before this feature carry version zero.
+			if raw, exists := claims["sv"]; exists {
+				parsed, ok := raw.(float64)
+				if !ok || parsed < 0 || parsed != float64(int64(parsed)) {
+					return nil, unauthenticated(ctx, "invalid authorization")
+				}
+				version = int64(parsed)
+			}
+			if version != customer.SessionVersion {
+				return nil, unauthenticated(ctx, "invalid authorization")
+			}
+		}
 
 		principal := &Principal{
 			AuthType: AuthTypeJWT,

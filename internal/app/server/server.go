@@ -18,6 +18,7 @@ import (
 	billingrpc "github.com/pug-sh/pug/internal/app/server/rpc/dashboard/billing"
 	"github.com/pug-sh/pug/internal/app/server/rpc/dashboard/customers"
 	dashboardsrpc "github.com/pug-sh/pug/internal/app/server/rpc/dashboard/dashboards"
+	instancerpc "github.com/pug-sh/pug/internal/app/server/rpc/dashboard/instance"
 	"github.com/pug-sh/pug/internal/app/server/rpc/dashboard/orgemailproviders"
 	orgsrpc "github.com/pug-sh/pug/internal/app/server/rpc/dashboard/orgs"
 	"github.com/pug-sh/pug/internal/app/server/rpc/dashboard/projects"
@@ -35,6 +36,7 @@ import (
 	corecustomers "github.com/pug-sh/pug/internal/core/customers"
 	coredashboards "github.com/pug-sh/pug/internal/core/dashboards"
 	coreinsights "github.com/pug-sh/pug/internal/core/insights"
+	coreinstanceadmin "github.com/pug-sh/pug/internal/core/instanceadmin"
 	coreorgs "github.com/pug-sh/pug/internal/core/orgs"
 	coreprofiles "github.com/pug-sh/pug/internal/core/profiles"
 	coreprojects "github.com/pug-sh/pug/internal/core/projects"
@@ -42,6 +44,7 @@ import (
 	"github.com/pug-sh/pug/internal/gen/proto/dashboard/billing/v1/billingv1connect"
 	"github.com/pug-sh/pug/internal/gen/proto/dashboard/customers/v1/customersv1connect"
 	"github.com/pug-sh/pug/internal/gen/proto/dashboard/dashboards/v1/dashboardsv1connect"
+	"github.com/pug-sh/pug/internal/gen/proto/dashboard/instance/v1/instancev1connect"
 	"github.com/pug-sh/pug/internal/gen/proto/dashboard/orgemailproviders/v1/orgemailprovidersv1connect"
 	"github.com/pug-sh/pug/internal/gen/proto/dashboard/orgs/v1/orgsv1connect"
 	"github.com/pug-sh/pug/internal/gen/proto/dashboard/projects/v1/projectsv1connect"
@@ -97,7 +100,7 @@ func start(ctx context.Context, d *deps) error {
 			pogrpc.ErrorInterceptor(),
 			validate.NewInterceptor(validate.WithoutErrorDetails()),
 			pogrpc.PrincipalInterceptor(),
-			pogrpc.AuthzInterceptor(d.authz, orgsSvc),
+			pogrpc.AuthzInterceptor(d.authz, orgsSvc, d.instancePolicy),
 		),
 		connect.WithRecover(pogrpc.RecoverHandlerPanic),
 		// The decompressed message — WithRequestLimits only sees the gzipped wire bytes.
@@ -109,7 +112,7 @@ func start(ctx context.Context, d *deps) error {
 	sharedMW := authn.NewMiddleware(pogrpc.WithDualAuth(d.jwtKey, queriesRo, projectsRepo))
 
 	// Public
-	authServer, err := auth.NewServer(ctx, d.pgRo, d.pgW, d.jwtKey, d.nats, d.demoEnabled)
+	authServer, err := auth.NewServer(ctx, d.pgRo, d.pgW, d.jwtKey, d.nats, d.demoEnabled, d.instancePolicy)
 	if err != nil {
 		return fmt.Errorf("auth server: %w", err)
 	}
@@ -120,7 +123,7 @@ func start(ctx context.Context, d *deps) error {
 
 	// Dashboard
 	orgsPath, orgsHandler := orgsv1connect.NewOrgsServiceHandler(
-		orgsrpc.NewServer(orgsSvc), handlerOpts)
+		orgsrpc.NewServerWithPolicy(orgsSvc, d.instancePolicy), handlerOpts)
 	projectsPath, projectsHandler := projectsv1connect.NewProjectsServiceHandler(
 		projects.NewServer(projectsSvc), handlerOpts)
 	dashboardsPath, dashboardsHandler := dashboardsv1connect.NewDashboardsServiceHandler(
@@ -137,7 +140,9 @@ func start(ctx context.Context, d *deps) error {
 		handlerOpts)
 
 	customersPath, customersHandler := customersv1connect.NewCustomersServiceHandler(
-		customers.NewServer(corecustomers.NewService(d.pgW)), handlerOpts)
+		customers.NewServerWithPolicy(corecustomers.NewService(d.pgW), d.instancePolicy), handlerOpts)
+	instancePath, instanceHandler := instancev1connect.NewInstanceAdminServiceHandler(
+		instancerpc.NewServer(coreinstanceadmin.NewService(d.pgRo, d.pgW, d.instancePolicy, orgsSvc)), handlerOpts)
 
 	// No ClickHouse: the server only reads what `pug cron usage` stored, and
 	// MeterWindow is the one method that needs it.
@@ -207,6 +212,7 @@ func start(ctx context.Context, d *deps) error {
 	handle(dashboardsPath, pogrpc.WithCORS(ctx, d.corsOrigins, dashboardMW.Wrap(dashboardsHandler)))
 	handle(orgEmailProvidersPath, pogrpc.WithCORS(ctx, d.corsOrigins, dashboardMW.Wrap(orgEmailProvidersHandler)))
 	handle(customersPath, pogrpc.WithCORS(ctx, d.corsOrigins, dashboardMW.Wrap(customersHandler)))
+	handle(instancePath, pogrpc.WithCORS(ctx, d.corsOrigins, dashboardMW.Wrap(instanceHandler)))
 	handle(usagePath, pogrpc.WithCORS(ctx, d.corsOrigins, dashboardMW.Wrap(usageHandler)))
 	handle(billingPath, pogrpc.WithCORS(ctx, d.corsOrigins, dashboardMW.Wrap(billingHandler)))
 

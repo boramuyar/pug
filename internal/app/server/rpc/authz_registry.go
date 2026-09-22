@@ -21,6 +21,19 @@ import (
 // of served procedures, derived from the generated handler interfaces by
 // reflection: no RPC ships without a decision, and no entry outlives its RPC.
 var permissionRegistry = map[string]authzspec.Spec{
+	// --- dashboard.instance.v1.InstanceAdminService ---
+	"/dashboard.instance.v1.InstanceAdminService/ListUsers":             authzspec.Instance(),
+	"/dashboard.instance.v1.InstanceAdminService/SetUserDisabled":       authzspec.Instance(),
+	"/dashboard.instance.v1.InstanceAdminService/RevokeUserSessions":    authzspec.Instance(),
+	"/dashboard.instance.v1.InstanceAdminService/ListOrganizations":     authzspec.Instance(),
+	"/dashboard.instance.v1.InstanceAdminService/GetOrganization":       authzspec.Instance(),
+	"/dashboard.instance.v1.InstanceAdminService/ProvisionOrganization": authzspec.Instance(),
+	"/dashboard.instance.v1.InstanceAdminService/RenameOrganization":    authzspec.Instance(),
+	"/dashboard.instance.v1.InstanceAdminService/InviteMember":          authzspec.Instance(),
+	"/dashboard.instance.v1.InstanceAdminService/ResendInvitation":      authzspec.Instance(),
+	"/dashboard.instance.v1.InstanceAdminService/RevokeInvitation":      authzspec.Instance(),
+	"/dashboard.instance.v1.InstanceAdminService/SetMemberRole":         authzspec.Instance(),
+	"/dashboard.instance.v1.InstanceAdminService/RemoveMember":          authzspec.Instance(),
 	// --- public.auth.v1.AuthService ---
 	"/public.auth.v1.AuthService/SignInWithEmail":    authzspec.Public(),
 	"/public.auth.v1.AuthService/RequestMagicLink":   authzspec.Public(),
