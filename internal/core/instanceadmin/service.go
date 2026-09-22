@@ -132,31 +132,35 @@ func (s *Service) ListUsers(ctx context.Context, filters UserFilters, size uint3
 		users = users[:limit]
 		next = users[len(users)-1].ID
 	}
+	if len(users) == 0 {
+		return users, next, nil
+	}
+	userIndexes := make(map[string]int, len(users))
+	userIDs := make([]string, len(users))
 	for i := range users {
-		memberships, err := s.memberships(ctx, users[i].ID)
-		if err != nil {
+		userIndexes[users[i].ID] = i
+		userIDs[i] = users[i].ID
+		users[i].Memberships = []Membership{}
+	}
+	membershipRows, err := s.read.Query(ctx, `select m.customer_id, o.id, o.display_name, m.role
+		from org_members m join orgs o on o.id=m.org_id
+		where m.customer_id=any($1::varchar[]) order by m.customer_id, o.id`, userIDs)
+	if err != nil {
+		return nil, "", err
+	}
+	defer membershipRows.Close()
+	for membershipRows.Next() {
+		var userID string
+		var m Membership
+		if err := membershipRows.Scan(&userID, &m.OrgID, &m.OrgName, &m.Role); err != nil {
 			return nil, "", err
 		}
-		users[i].Memberships = memberships
+		users[userIndexes[userID]].Memberships = append(users[userIndexes[userID]].Memberships, m)
+	}
+	if err := membershipRows.Err(); err != nil {
+		return nil, "", err
 	}
 	return users, next, nil
-}
-
-func (s *Service) memberships(ctx context.Context, userID string) ([]Membership, error) {
-	rows, err := s.read.Query(ctx, `select o.id, o.display_name, m.role from org_members m join orgs o on o.id=m.org_id where m.customer_id=$1 order by o.id`, userID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	result := []Membership{}
-	for rows.Next() {
-		var m Membership
-		if err := rows.Scan(&m.OrgID, &m.OrgName, &m.Role); err != nil {
-			return nil, err
-		}
-		result = append(result, m)
-	}
-	return result, rows.Err()
 }
 
 func (s *Service) ListOrganizations(ctx context.Context, search string, size uint32, cursor string) ([]Organization, string, error) {
@@ -389,7 +393,7 @@ func (s *Service) SetUserDisabled(ctx context.Context, actor, userID string, dis
 	if err != nil {
 		return err
 	}
-	if disabled && !wasDisabled && verified && s.policy.AllowsAdmin(email) && s.policy.Managed() {
+	if disabled && !wasDisabled && verified && s.policy.AllowsAdmin(email) {
 		var count int
 		if err := tx.QueryRow(ctx, `select count(*) from customers where lower(email)=any($1) and email_verified_at is not null and disabled_at is null`, s.policy.AdminEmails()).Scan(&count); err != nil {
 			return err

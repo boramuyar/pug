@@ -65,6 +65,13 @@ func TestInventoryAndLastAdminGuard(t *testing.T) {
 	if err := svc.SetUserDisabled(ctx, admin.ID, admin.ID, true); !errors.Is(err, instanceadmin.ErrLastAdmin) {
 		t.Fatalf("last admin disable: %v", err)
 	}
+	openPolicy, err := instance.ParsePolicy("open", "admin@example.com,backup@example.com")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := instanceadmin.NewService(db.PgRO, db.PgW, openPolicy, nil).SetUserDisabled(ctx, admin.ID, admin.ID, true); !errors.Is(err, instanceadmin.ErrLastAdmin) {
+		t.Fatalf("last admin disable in open mode: %v", err)
+	}
 	if err := svc.SetUserDisabled(ctx, admin.ID, user.ID, true); err != nil {
 		t.Fatal(err)
 	}
