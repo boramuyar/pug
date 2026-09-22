@@ -143,7 +143,10 @@ message RevokeInvitationResponse {}
 message SetMemberRoleRequest {
   string org_id = 1 [(buf.validate.field).required = true];
   string user_id = 2 [(buf.validate.field).required = true];
-  dashboard.orgs.v1.OrgRole role = 3;
+  dashboard.orgs.v1.OrgRole role = 3 [(buf.validate.field) = {
+    required: true
+    enum: {defined_only: true, not_in: [0]}
+  }];
 }
 message SetMemberRoleResponse {}
 message RemoveMemberRequest {

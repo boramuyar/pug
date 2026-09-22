@@ -134,11 +134,11 @@ func (s *server) SetUserDisabled(ctx context.Context, req *connect.Request[insta
 	if err := s.service.SetUserDisabled(ctx, id, req.Msg.GetUserId(), req.Msg.GetDisabled()); err != nil {
 		return nil, internal(err)
 	}
-	users, _, err := s.service.ListUsers(ctx, instanceadmin.UserFilters{Search: req.Msg.GetUserId()}, 1, "")
-	if err != nil || len(users) == 0 {
+	user, err := s.service.GetUser(ctx, req.Msg.GetUserId())
+	if err != nil {
 		return nil, internal(err)
 	}
-	return connect.NewResponse(&instancev1.SetUserDisabledResponse{User: toUser(users[0])}), nil
+	return connect.NewResponse(&instancev1.SetUserDisabledResponse{User: toUser(user)}), nil
 }
 
 func (s *server) RevokeUserSessions(ctx context.Context, req *connect.Request[instancev1.RevokeUserSessionsRequest]) (*connect.Response[instancev1.RevokeUserSessionsResponse], error) {
@@ -229,6 +229,13 @@ func requestedRole(r orgsv1.OrgRole) (coreorgs.Role, error) {
 	return result, nil
 }
 
+func requiredRole(r orgsv1.OrgRole) (coreorgs.Role, error) {
+	if r == orgsv1.OrgRole_ORG_ROLE_UNSPECIFIED {
+		return "", apperr.Invalid(apperr.ReasonOrgUnsupportedRole, "role is required")
+	}
+	return requestedRole(r)
+}
+
 func (s *server) InviteMember(ctx context.Context, req *connect.Request[instancev1.InviteMemberRequest]) (*connect.Response[instancev1.InviteMemberResponse], error) {
 	id, err := actor(ctx)
 	if err != nil {
@@ -275,7 +282,7 @@ func (s *server) SetMemberRole(ctx context.Context, req *connect.Request[instanc
 	if err != nil {
 		return nil, err
 	}
-	memberRole, err := requestedRole(req.Msg.GetRole())
+	memberRole, err := requiredRole(req.Msg.GetRole())
 	if err != nil {
 		return nil, err
 	}

@@ -75,9 +75,12 @@ func TestInventoryAndLastAdminGuard(t *testing.T) {
 	if err := svc.SetUserDisabled(ctx, admin.ID, user.ID, true); err != nil {
 		t.Fatal(err)
 	}
-	users, _, err = svc.ListUsers(ctx, instanceadmin.UserFilters{Search: user.ID}, 10, "")
-	if err != nil || len(users) != 1 || !users[0].Disabled {
-		t.Fatalf("disabled user=%+v err=%v", users, err)
+	if _, err := w.CreateCustomer(ctx, dbwrite.CreateCustomerParams{ID: "00000000000000000000", Email: "contains-" + user.ID + "@example.com", DisplayName: "", PasswordHash: "", PictureUri: ""}); err != nil {
+		t.Fatal(err)
+	}
+	disabledUser, err := svc.GetUser(ctx, user.ID)
+	if err != nil || disabledUser.ID != user.ID || !disabledUser.Disabled || len(disabledUser.Memberships) != 1 {
+		t.Fatalf("disabled user=%+v err=%v", disabledUser, err)
 	}
 	orgs, _, err = svc.ListOrganizations(ctx, org.ID, 10, "")
 	if err != nil || len(orgs) != 1 || !orgs[0].NeedsAdmin {
@@ -202,6 +205,9 @@ func TestProvisionOrganizationKeepsOperatorOutsideMembership(t *testing.T) {
 	var auditCount int
 	if err := db.PgRO.QueryRow(ctx, `select count(*) from instance_audit where target_id=$1 and action in ('organization.provisioned','organization.member_invited')`, orgID).Scan(&auditCount); err != nil || auditCount != 2 {
 		t.Fatalf("audit count=%d err=%v", auditCount, err)
+	}
+	if err := db.PgRO.QueryRow(ctx, `select count(*) from instance_audit where target_id=$1 and action='organization.member_invited' and details->>'status'='completed'`, orgID).Scan(&auditCount); err != nil || auditCount != 1 {
+		t.Fatalf("completed invitation audit count=%d err=%v", auditCount, err)
 	}
 	job := &emailworkerv1.EmailJob{}
 	if err := proto.Unmarshal(publisher.data, job); err != nil {

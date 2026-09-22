@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -12,7 +13,9 @@ import (
 	"github.com/pug-sh/pug/internal/core/instance"
 	coreorgs "github.com/pug-sh/pug/internal/core/orgs"
 	"github.com/pug-sh/pug/internal/core/projects"
+	"github.com/pug-sh/pug/internal/deps/telemetry"
 	"github.com/pug-sh/pug/internal/gen/repo/dbwrite"
+	"github.com/pug-sh/pug/internal/slogx"
 	"github.com/rs/xid"
 )
 
@@ -163,6 +166,35 @@ func (s *Service) ListUsers(ctx context.Context, filters UserFilters, size uint3
 	return users, next, nil
 }
 
+// GetUser returns one user by exact ID from the writer so mutation responses do
+// not depend on fuzzy search ordering or read-replica lag.
+func (s *Service) GetUser(ctx context.Context, id string) (User, error) {
+	var user User
+	err := s.write.QueryRow(ctx, `select id, email, create_time, email_verified_at is not null, disabled_at is not null
+		from customers where id=$1`, id).Scan(&user.ID, &user.Email, &user.CreatedAt, &user.Verified, &user.Disabled)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return user, ErrNotFound
+	}
+	if err != nil {
+		return user, err
+	}
+	rows, err := s.write.Query(ctx, `select o.id, o.display_name, m.role
+		from org_members m join orgs o on o.id=m.org_id where m.customer_id=$1 order by o.id`, id)
+	if err != nil {
+		return user, err
+	}
+	defer rows.Close()
+	user.Memberships = []Membership{}
+	for rows.Next() {
+		var membership Membership
+		if err := rows.Scan(&membership.OrgID, &membership.OrgName, &membership.Role); err != nil {
+			return user, err
+		}
+		user.Memberships = append(user.Memberships, membership)
+	}
+	return user, rows.Err()
+}
+
 func (s *Service) ListOrganizations(ctx context.Context, search string, size uint32, cursor string) ([]Organization, string, error) {
 	if !validCursor(cursor) {
 		return nil, "", ErrInvalidPageToken
@@ -305,34 +337,32 @@ func audit(ctx context.Context, tx pgx.Tx, actor, action, targetType, targetID s
 // invalidation and invitation delivery remain authoritative. Persist an audit
 // attempt first. A crash after the mutation leaves a durable entry to reconcile.
 func (s *Service) auditedOrgAction(ctx context.Context, actor, action, orgID string, mutate func() error) error {
-	conn, err := s.write.Acquire(ctx)
-	if err != nil {
-		return err
-	}
-	defer conn.Release()
-	var existingID string
-	if err := conn.QueryRow(ctx, `select id from orgs where id=$1`, orgID).Scan(&existingID); err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return ErrNotFound
-		}
-		return err
-	}
 	auditID := xid.New().String()
-	_, err = s.write.Exec(ctx, `insert into instance_audit(id,actor_id,action,target_type,target_id,details)
-		values($1,$2,$3,'organization',$4,'{"status":"started"}'::jsonb)`, auditID, actor, action, orgID)
+	command, err := s.write.Exec(ctx, `insert into instance_audit(id,actor_id,action,target_type,target_id,details)
+		select $1,$2,$3,'organization',$4,'{"status":"started"}'::jsonb from orgs where id=$4`, auditID, actor, action, orgID)
 	if err != nil {
 		return err
+	}
+	if command.RowsAffected() == 0 {
+		return ErrNotFound
 	}
 	mutationErr := mutate()
 	status := "completed"
 	if mutationErr != nil {
 		status = "failed"
 	}
-	_, auditErr := s.write.Exec(ctx, `update instance_audit set details=jsonb_build_object('status',$2::text) where id=$1`, auditID, status)
+	auditCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+	defer cancel()
+	if _, auditErr := s.write.Exec(auditCtx, `update instance_audit set details=jsonb_build_object('status',$2::text) where id=$1`, auditID, status); auditErr != nil {
+		wrapped := fmt.Errorf("record instance audit outcome: %w", auditErr)
+		slog.ErrorContext(auditCtx, "failed to record instance organization audit outcome", slogx.Error(wrapped),
+			slog.String("audit_id", auditID), slog.String("action", action), slog.String("org_id", orgID), slog.String("outcome", status))
+		telemetry.RecordError(auditCtx, wrapped)
+	}
 	if mutationErr != nil {
 		return mutationErr
 	}
-	return auditErr
+	return nil
 }
 
 func (s *Service) InviteMember(ctx context.Context, actor, orgID, email string, role coreorgs.Role) (coreorgs.InviteDispatch, error) {
