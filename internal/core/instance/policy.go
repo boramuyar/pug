@@ -1,7 +1,7 @@
 package instance
 
 import (
-	"fmt"
+	"errors"
 	"net/mail"
 	"sort"
 	"strings"
@@ -23,25 +23,25 @@ func ParsePolicy(mode, emailList string) (Policy, error) {
 		mode = "open"
 	}
 	if mode != "open" && mode != "managed" {
-		return Policy{}, fmt.Errorf("PUG_ORG_CREATION_MODE must be open or managed")
+		return Policy{}, errors.New("PUG_ORG_CREATION_MODE must be open or managed")
 	}
 	p := Policy{mode: mode, admins: make(map[string]struct{})}
 	if strings.TrimSpace(emailList) != "" {
-		for _, raw := range strings.Split(emailList, ",") {
+		for raw := range strings.SplitSeq(emailList, ",") {
 			email := strings.TrimSpace(raw)
 			address, err := mail.ParseAddress(email)
 			if err != nil || address.Address != email {
-				return Policy{}, fmt.Errorf("PUG_INSTANCE_ADMIN_EMAILS contains an invalid address")
+				return Policy{}, errors.New("PUG_INSTANCE_ADMIN_EMAILS contains an invalid address")
 			}
 			email = strings.ToLower(email)
 			if _, exists := p.admins[email]; exists {
-				return Policy{}, fmt.Errorf("PUG_INSTANCE_ADMIN_EMAILS contains a duplicate address")
+				return Policy{}, errors.New("PUG_INSTANCE_ADMIN_EMAILS contains a duplicate address")
 			}
 			p.admins[email] = struct{}{}
 		}
 	}
 	if mode == "managed" && len(p.admins) == 0 {
-		return Policy{}, fmt.Errorf("PUG_INSTANCE_ADMIN_EMAILS is required in managed mode")
+		return Policy{}, errors.New("PUG_INSTANCE_ADMIN_EMAILS is required in managed mode")
 	}
 	return p, nil
 }

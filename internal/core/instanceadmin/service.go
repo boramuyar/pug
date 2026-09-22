@@ -375,7 +375,7 @@ func (s *Service) SetUserDisabled(ctx context.Context, actor, userID string, dis
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback(ctx)
+	defer func() { _ = tx.Rollback(ctx) }()
 	// Serialize concurrent attempts to disable different allowlisted admins.
 	if _, err := tx.Exec(ctx, `select pg_advisory_xact_lock(hashtext('pug-instance-admin-disable'))`); err != nil {
 		return err
@@ -421,7 +421,7 @@ func (s *Service) RevokeUserSessions(ctx context.Context, actor, userID string) 
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback(ctx)
+	defer func() { _ = tx.Rollback(ctx) }()
 	command, err := tx.Exec(ctx, `update customers set session_version=session_version+1 where id=$1`, userID)
 	if err != nil {
 		return err
@@ -441,16 +441,16 @@ func (s *Service) RevokeUserSessions(ctx context.Context, actor, userID string) 
 func (s *Service) ProvisionOrganization(ctx context.Context, actor, name, adminEmail string) (string, error) {
 	name = strings.TrimSpace(name)
 	if name == "" || len(name) > 150 {
-		return "", fmt.Errorf("invalid organization name")
+		return "", errors.New("invalid organization name")
 	}
 	if strings.TrimSpace(adminEmail) == "" {
-		return "", fmt.Errorf("initial admin email required")
+		return "", errors.New("initial admin email required")
 	}
 	tx, err := s.write.Begin(ctx)
 	if err != nil {
 		return "", err
 	}
-	defer tx.Rollback(ctx)
+	defer func() { _ = tx.Rollback(ctx) }()
 	w := dbwrite.New(tx)
 	org, err := w.CreateOrg(ctx, dbwrite.CreateOrgParams{ID: xid.New().String(), DisplayName: name})
 	if err != nil {
@@ -468,7 +468,7 @@ func (s *Service) ProvisionOrganization(ctx context.Context, actor, name, adminE
 	// The invitation service commits and queues email independently; the org remains
 	// visible with zero members if mail delivery fails, so an admin can retry.
 	if _, err := s.InviteMember(ctx, actor, org.ID, adminEmail, coreorgs.RoleAdmin); err != nil {
-		return org.ID, fmt.Errorf("%w: %v", ErrInitialInvitationFailed, err)
+		return org.ID, fmt.Errorf("%w: %w", ErrInitialInvitationFailed, err)
 	}
 	return org.ID, nil
 }
@@ -476,13 +476,13 @@ func (s *Service) ProvisionOrganization(ctx context.Context, actor, name, adminE
 func (s *Service) RenameOrganization(ctx context.Context, actor, id, name string) error {
 	name = strings.TrimSpace(name)
 	if name == "" || len(name) > 150 {
-		return fmt.Errorf("invalid organization name")
+		return errors.New("invalid organization name")
 	}
 	tx, err := s.write.Begin(ctx)
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback(ctx)
+	defer func() { _ = tx.Rollback(ctx) }()
 	command, err := tx.Exec(ctx, `update orgs set display_name=$2 where id=$1`, id, name)
 	if err != nil {
 		return err

@@ -30,12 +30,14 @@ func TestInstanceAuthorizationRequiresVerifiedAllowlistedEnabledAccount(t *testi
 		t.Run(tc.name, func(t *testing.T) {
 			customer := &dbread.Customer{Email: tc.email, EmailVerifiedAt: pgtype.Timestamptz{Valid: tc.verified}, DisabledAt: pgtype.Timestamptz{Valid: tc.disabled}}
 			ctx := authn.SetInfo(context.Background(), &Principal{AuthType: AuthTypeJWT, Customer: customer})
-		err := authorizeInstanceGated(ctx, policy)
-		if tc.want == 0 {
-			if err != nil { t.Fatalf("expected access: %v", err) }
-			return
-		}
-		if got := apperrCode(err); got != tc.want {
+			err := authorizeInstanceGated(ctx, policy)
+			if tc.want == 0 {
+				if err != nil {
+					t.Fatalf("expected access: %v", err)
+				}
+				return
+			}
+			if got := apperrCode(err); got != tc.want {
 				t.Fatalf("authorization code=%v, want %v (err=%v)", got, tc.want, err)
 			}
 		})
