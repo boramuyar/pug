@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -21,10 +22,15 @@ var (
 	ErrNotFound          = errors.New("deletion target not found")
 	ErrAlreadyRequested  = errors.New("deletion already requested")
 	ErrNameMismatch      = errors.New("project confirmation name does not match")
+	ErrReasonRequired    = errors.New("deletion reason required")
 	ErrComplianceActive  = errors.New("compliance requests must finish before deletion")
+	ErrBillingActive     = errors.New("active billing subscription must be cancelled before deletion")
+	ErrCannotCancel      = errors.New("deletion can no longer be cancelled")
 	ErrCannotRetry       = errors.New("only failed deletions can be retried")
 	ErrPublisherRequired = errors.New("deletion purge publisher is required")
 )
+
+const OrganizationCancellationWindow = 24 * time.Hour
 
 type Operation struct {
 	ID         string
@@ -91,8 +97,8 @@ func (s *Service) RequestProject(ctx context.Context, actorID, orgID, projectID,
 	if err := lockProjectExclusive(ctx, tx, projectID); err != nil {
 		return result, err
 	}
-	var name, projectState string
-	err = tx.QueryRow(ctx, `select display_name,deletion_state from projects where id=$1 and org_id=$2 for update`, projectID, orgID).Scan(&name, &projectState)
+	var name, projectState, orgState string
+	err = tx.QueryRow(ctx, `select p.display_name,p.deletion_state,o.deletion_state from projects p join orgs o on o.id=p.org_id where p.id=$1 and p.org_id=$2 for update of p`, projectID, orgID).Scan(&name, &projectState, &orgState)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return result, ErrNotFound
 	}
@@ -102,8 +108,11 @@ func (s *Service) RequestProject(ctx context.Context, actorID, orgID, projectID,
 	if name != confirmationName {
 		return result, ErrNameMismatch
 	}
-	if projectState != "active" {
-		return s.existing(ctx, tx, "project", projectID)
+	if projectState != "active" || orgState != "active" {
+		if projectState != "active" {
+			return s.existing(ctx, tx, "project", projectID)
+		}
+		return result, ErrAlreadyRequested
 	}
 	if err := checkCompliance(ctx, tx, []string{projectID}); err != nil {
 		return result, err
@@ -129,6 +138,117 @@ func (s *Service) RequestProject(ctx context.Context, actorID, orgID, projectID,
 		return Operation{}, err
 	}
 	if err := audit(ctx, tx, actorID, "project.deletion_requested", "project", projectID, ""); err != nil {
+		return Operation{}, err
+	}
+	if err := s.blockProjectKeys(ctx, keyTokens); err != nil {
+		return Operation{}, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		s.unblockProjectKeysDetached(ctx, keyTokens)
+		return Operation{}, err
+	}
+	if err := s.publishPurge(ctx, result.ID); err != nil {
+		return Operation{}, errors.Join(err, s.markFailed(ctx, result.ID, err))
+	}
+	return s.Get(ctx, result.ID)
+}
+
+func (s *Service) RequestOrganization(ctx context.Context, actorID, orgID, confirmationID, reason string) (Operation, error) {
+	var result Operation
+	if s.publisher == nil {
+		return result, ErrPublisherRequired
+	}
+	if orgID != confirmationID {
+		return result, ErrNameMismatch
+	}
+	reason = strings.TrimSpace(reason)
+	if reason == "" {
+		return result, ErrReasonRequired
+	}
+	tx, err := s.pg.Begin(ctx)
+	if err != nil {
+		return result, err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	if _, err := tx.Exec(ctx, `select pg_advisory_xact_lock(hashtext('pug-org-deletion'),hashtext($1::text))`, orgID); err != nil {
+		return result, err
+	}
+	var name, state string
+	err = tx.QueryRow(ctx, `select display_name,deletion_state from orgs where id=$1 for update`, orgID).Scan(&name, &state)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return result, ErrNotFound
+	}
+	if err != nil {
+		return result, err
+	}
+	if state != "active" {
+		return s.existing(ctx, tx, "organization", orgID)
+	}
+	if err := checkBilling(ctx, tx, orgID); err != nil {
+		return result, err
+	}
+	rows, err := tx.Query(ctx, `select id,display_name,deletion_state from projects where org_id=$1 order by id`, orgID)
+	if err != nil {
+		return result, err
+	}
+	steps := []ProjectStep{}
+	for rows.Next() {
+		var p ProjectStep
+		var projectState string
+		if err := rows.Scan(&p.ProjectID, &p.ProjectName, &projectState); err != nil {
+			rows.Close()
+			return result, err
+		}
+		if projectState != "active" {
+			rows.Close()
+			return result, ErrAlreadyRequested
+		}
+		steps = append(steps, p)
+	}
+	err = rows.Err()
+	rows.Close()
+	if err != nil {
+		return result, err
+	}
+	for _, p := range steps {
+		if err := lockProjectExclusive(ctx, tx, p.ProjectID); err != nil {
+			return result, err
+		}
+	}
+	var inactiveCount int
+	if err := tx.QueryRow(ctx, `select count(*) from projects where org_id=$1 and deletion_state<>'active'`, orgID).Scan(&inactiveCount); err != nil {
+		return result, err
+	}
+	if inactiveCount != 0 {
+		return result, ErrAlreadyRequested
+	}
+	ids := make([]string, 0, len(steps))
+	for _, p := range steps {
+		ids = append(ids, p.ProjectID)
+	}
+	if err := checkCompliance(ctx, tx, ids); err != nil {
+		return result, err
+	}
+	keyTokens, err := s.projectKeyTokens(ctx, tx, ids)
+	if err != nil {
+		return result, err
+	}
+	result = Operation{ID: xid.New().String(), TargetType: "organization", TargetID: orgID, TargetName: name, OrgID: orgID, ActorID: actorID, Reason: reason, Status: "pending_deletion", Projects: steps}
+	if _, err := tx.Exec(ctx, `insert into deletion_operations(id,target_type,target_id,target_name,org_id,actor_id,reason,status,purge_after) values($1,'organization',$2,$3,$2,$4,$5,'pending_deletion',now()+interval '24 hours')`, result.ID, orgID, name, actorID, reason); err != nil {
+		return Operation{}, err
+	}
+	for _, p := range steps {
+		if _, err := tx.Exec(ctx, `insert into deletion_project_steps(operation_id,project_id,project_name) values($1,$2,$3)`, result.ID, p.ProjectID, p.ProjectName); err != nil {
+			return Operation{}, err
+		}
+	}
+	if _, err := tx.Exec(ctx, `update orgs set deletion_state='pending_deletion' where id=$1`, orgID); err != nil {
+		return Operation{}, err
+	}
+	if _, err := tx.Exec(ctx, `update projects set deletion_state='pending_deletion' where org_id=$1`, orgID); err != nil {
+		return Operation{}, err
+	}
+	if err := audit(ctx, tx, actorID, "organization.deletion_requested", "organization", orgID, reason); err != nil {
 		return Operation{}, err
 	}
 	if err := s.blockProjectKeys(ctx, keyTokens); err != nil {
@@ -237,6 +357,19 @@ func checkCompliance(ctx context.Context, tx pgx.Tx, projectIDs []string) error 
 	return nil
 }
 
+func checkBilling(ctx context.Context, q interface {
+	QueryRow(context.Context, string, ...any) pgx.Row
+}, orgID string) error {
+	var active bool
+	if err := q.QueryRow(ctx, `select exists(select 1 from billing_subscriptions where org_id=$1 and status in ('active','past_due'))`, orgID).Scan(&active); err != nil {
+		return err
+	}
+	if active {
+		return ErrBillingActive
+	}
+	return nil
+}
+
 func audit(ctx context.Context, tx pgx.Tx, actor, action, kind, target, reason string) error {
 	_, err := tx.Exec(ctx, `insert into instance_audit(id,actor_id,action,target_type,target_id,reason) values($1,$2,$3,$4,$5,$6)`, xid.New().String(), actor, action, kind, target, reason)
 	return err
@@ -258,23 +391,104 @@ func (s *Service) markFailed(ctx context.Context, id string, cause error) error 
 		return err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
-	var targetID, actorID, status string
-	if err := tx.QueryRow(ctx, `select target_id,actor_id,status from deletion_operations where id=$1 for update`, id).Scan(&targetID, &actorID, &status); err != nil {
+	var kind, targetID, actorID, status string
+	if err := tx.QueryRow(ctx, `select target_type,target_id,actor_id,status from deletion_operations where id=$1 for update`, id).Scan(&kind, &targetID, &actorID, &status); err != nil {
 		return err
 	}
-	if status == "deleted" {
+	if status == "deleted" || status == "cancelled" {
 		return nil
 	}
 	if _, err := tx.Exec(ctx, `update deletion_operations set status='failed',last_error=$2 where id=$1`, id, message); err != nil {
 		return err
 	}
-	if _, err := tx.Exec(ctx, `update projects set deletion_state='failed' where id=$1`, targetID); err != nil {
-		return err
+	if kind == "organization" {
+		if _, err := tx.Exec(ctx, `update orgs set deletion_state='failed' where id=$1`, targetID); err != nil {
+			return err
+		}
+	} else {
+		if _, err := tx.Exec(ctx, `update projects set deletion_state='failed' where id=$1`, targetID); err != nil {
+			return err
+		}
 	}
-	if err := audit(ctx, tx, actorID, "project.deletion_failed", "project", targetID, message); err != nil {
+	if err := audit(ctx, tx, actorID, kind+".deletion_failed", kind, targetID, message); err != nil {
 		return err
 	}
 	return tx.Commit(ctx)
+}
+
+func (s *Service) CancelOrganization(ctx context.Context, actorID, operationID string) (Operation, error) {
+	tx, err := s.pg.Begin(ctx)
+	if err != nil {
+		return Operation{}, err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	var orgID, kind, status string
+	var deadline time.Time
+	var started *time.Time
+	err = tx.QueryRow(ctx, `select target_id,target_type,status,purge_after,started_at from deletion_operations where id=$1 for update`, operationID).Scan(&orgID, &kind, &status, &deadline, &started)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return Operation{}, ErrNotFound
+	}
+	if err != nil {
+		return Operation{}, err
+	}
+	var beforeDeadline bool
+	if err := tx.QueryRow(ctx, `select clock_timestamp() < $1`, deadline).Scan(&beforeDeadline); err != nil {
+		return Operation{}, err
+	}
+	cancellableStatus := status == "pending_deletion" || (status == "failed" && started == nil)
+	if kind != "organization" || !cancellableStatus || !beforeDeadline {
+		return Operation{}, ErrCannotCancel
+	}
+	rows, err := tx.Query(ctx, `select project_id from deletion_project_steps where operation_id=$1 order by project_id`, operationID)
+	if err != nil {
+		return Operation{}, err
+	}
+	ids := []string{}
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			rows.Close()
+			return Operation{}, err
+		}
+		ids = append(ids, id)
+	}
+	err = rows.Err()
+	rows.Close()
+	if err != nil {
+		return Operation{}, err
+	}
+	for _, id := range ids {
+		if err := lockProjectExclusive(ctx, tx, id); err != nil {
+			return Operation{}, err
+		}
+	}
+	keyTokens, err := s.projectKeyTokens(ctx, tx, ids)
+	if err != nil {
+		return Operation{}, err
+	}
+	if _, err := tx.Exec(ctx, `update orgs set deletion_state='active' where id=$1 and deletion_state in ('pending_deletion','failed')`, orgID); err != nil {
+		return Operation{}, err
+	}
+	if _, err := tx.Exec(ctx, `update projects set deletion_state='active' where org_id=$1 and deletion_state in ('pending_deletion','failed')`, orgID); err != nil {
+		return Operation{}, err
+	}
+	if _, err := tx.Exec(ctx, `update deletion_operations set status='cancelled',finished_at=now() where id=$1`, operationID); err != nil {
+		return Operation{}, err
+	}
+	if err := audit(ctx, tx, actorID, "organization.deletion_cancelled", "organization", orgID, ""); err != nil {
+		return Operation{}, err
+	}
+	if err := s.unblockProjectKeys(ctx, keyTokens); err != nil {
+		return Operation{}, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+		defer cancel()
+		_ = s.blockProjectKeys(cleanupCtx, keyTokens)
+		return Operation{}, err
+	}
+	return s.Get(ctx, operationID)
 }
 
 func (s *Service) Retry(ctx context.Context, actorID, operationID string) (Operation, error) {
@@ -286,8 +500,8 @@ func (s *Service) Retry(ctx context.Context, actorID, operationID string) (Opera
 		return Operation{}, err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
-	var targetID, status string
-	err = tx.QueryRow(ctx, `select target_id,status from deletion_operations where id=$1 for update`, operationID).Scan(&targetID, &status)
+	var kind, targetID, status string
+	err = tx.QueryRow(ctx, `select target_type,target_id,status from deletion_operations where id=$1 for update`, operationID).Scan(&kind, &targetID, &status)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Operation{}, ErrNotFound
 	}
@@ -297,13 +511,24 @@ func (s *Service) Retry(ctx context.Context, actorID, operationID string) (Opera
 	if status != "failed" {
 		return Operation{}, ErrCannotRetry
 	}
-	if _, err := tx.Exec(ctx, `update deletion_operations set status='pending_deletion',purge_after=now(),last_error='' where id=$1`, operationID); err != nil {
+	if kind == "organization" {
+		if err := checkBilling(ctx, tx, targetID); err != nil {
+			return Operation{}, err
+		}
+	}
+	if _, err := tx.Exec(ctx, `update deletion_operations set status='pending_deletion',purge_after=case when target_type='organization' and started_at is null then greatest(purge_after,now()) else now() end,last_error='' where id=$1`, operationID); err != nil {
 		return Operation{}, err
 	}
-	if _, err := tx.Exec(ctx, `update projects set deletion_state='pending_deletion' where id=$1`, targetID); err != nil {
-		return Operation{}, err
+	if kind == "organization" {
+		if _, err := tx.Exec(ctx, `update orgs set deletion_state='pending_deletion' where id=$1`, targetID); err != nil {
+			return Operation{}, err
+		}
+	} else {
+		if _, err := tx.Exec(ctx, `update projects set deletion_state='pending_deletion' where id=$1`, targetID); err != nil {
+			return Operation{}, err
+		}
 	}
-	if err := audit(ctx, tx, actorID, "project.deletion_retried", "project", targetID, ""); err != nil {
+	if err := audit(ctx, tx, actorID, kind+".deletion_retried", kind, targetID, ""); err != nil {
 		return Operation{}, err
 	}
 	if err := tx.Commit(ctx); err != nil {

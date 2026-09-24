@@ -229,10 +229,11 @@ type InstanceAudit struct {
 }
 
 type Org struct {
-	CreateTime  pgtype.Timestamptz
-	DisplayName string
-	ID          string
-	UpdateTime  pgtype.Timestamptz
+	CreateTime    pgtype.Timestamptz
+	DisplayName   string
+	ID            string
+	UpdateTime    pgtype.Timestamptz
+	DeletionState string
 }
 
 type OrgEmailProvider struct {

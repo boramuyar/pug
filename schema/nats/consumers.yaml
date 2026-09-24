@@ -42,7 +42,7 @@ consumers:
     max_deliver: 5
     replay_policy: "instant"
 
-  # Project purge. The message identifies a durable deletion
+  # Project and organization purge. The message identifies a durable deletion
   # operation; the worker reloads current state before every idempotent attempt.
   - name: "compliance-project-purge-processor"
     stream_name: "compliance"

@@ -23,6 +23,7 @@ var ErrLastAdmin = errors.New("cannot disable the last effective instance admini
 var ErrNotFound = errors.New("resource not found")
 var ErrInitialInvitationFailed = errors.New("organization created but initial invitation failed")
 var ErrInvalidPageToken = errors.New("invalid page token")
+var ErrOrgInactive = errors.New("organization is pending deletion")
 
 type Membership struct {
 	OrgID   string
@@ -44,19 +45,21 @@ type UserFilters struct {
 	Enabled  *bool
 }
 type Organization struct {
-	ID           string
-	Name         string
-	CreatedAt    time.Time
-	MemberCount  int32
-	ProjectCount int32
-	AdminEmails  []string
-	NeedsAdmin   bool
+	ID            string
+	Name          string
+	CreatedAt     time.Time
+	MemberCount   int32
+	ProjectCount  int32
+	AdminEmails   []string
+	NeedsAdmin    bool
+	DeletionState string
 }
 type Project struct {
 	ID                string
 	Name              string
 	CreatedAt         time.Time
 	ReportingTimezone string
+	DeletionState     string
 }
 type Invitation struct {
 	ID        string
@@ -204,7 +207,7 @@ func (s *Service) ListOrganizations(ctx context.Context, search string, size uin
 		(select count(*) from org_members where org_id=o.id)::int,
 		(select count(*) from projects where org_id=o.id)::int,
 		coalesce((select array_agg(c.email order by c.email) from org_members m join customers c on c.id=m.customer_id where m.org_id=o.id and m.role='ORG_ROLE_ADMIN'), array[]::varchar[]),
-		not exists(select 1 from org_members m join customers c on c.id=m.customer_id where m.org_id=o.id and m.role='ORG_ROLE_ADMIN' and c.disabled_at is null)
+		not exists(select 1 from org_members m join customers c on c.id=m.customer_id where m.org_id=o.id and m.role='ORG_ROLE_ADMIN' and c.disabled_at is null), o.deletion_state
 		from orgs o where o.id > $1 and ($2 = '' or lower(o.display_name) like '%' || lower($2) || '%' or o.id = $2)
 		order by o.id limit $3`, cursor, strings.TrimSpace(search), limit+1)
 	if err != nil {
@@ -214,7 +217,7 @@ func (s *Service) ListOrganizations(ctx context.Context, search string, size uin
 	orgs := make([]Organization, 0, limit)
 	for rows.Next() {
 		var o Organization
-		if err := rows.Scan(&o.ID, &o.Name, &o.CreatedAt, &o.MemberCount, &o.ProjectCount, &o.AdminEmails, &o.NeedsAdmin); err != nil {
+		if err := rows.Scan(&o.ID, &o.Name, &o.CreatedAt, &o.MemberCount, &o.ProjectCount, &o.AdminEmails, &o.NeedsAdmin, &o.DeletionState); err != nil {
 			return nil, "", err
 		}
 		orgs = append(orgs, o)
@@ -250,23 +253,23 @@ func (s *Service) GetOrganization(ctx context.Context, id string, pageSizeValue 
 		(select count(*) from org_members where org_id=o.id)::int,
 		(select count(*) from projects where org_id=o.id)::int,
 		coalesce((select array_agg(c.email order by c.email) from org_members m join customers c on c.id=m.customer_id where m.org_id=o.id and m.role='ORG_ROLE_ADMIN'), array[]::varchar[]),
-		not exists(select 1 from org_members m join customers c on c.id=m.customer_id where m.org_id=o.id and m.role='ORG_ROLE_ADMIN' and c.disabled_at is null)
+		not exists(select 1 from org_members m join customers c on c.id=m.customer_id where m.org_id=o.id and m.role='ORG_ROLE_ADMIN' and c.disabled_at is null), o.deletion_state
 		from orgs o where o.id=$1`, id).Scan(&result.Organization.ID, &result.Organization.Name,
-		&result.Organization.CreatedAt, &result.Organization.MemberCount, &result.Organization.ProjectCount, &result.Organization.AdminEmails, &result.Organization.NeedsAdmin)
+		&result.Organization.CreatedAt, &result.Organization.MemberCount, &result.Organization.ProjectCount, &result.Organization.AdminEmails, &result.Organization.NeedsAdmin, &result.Organization.DeletionState)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return result, ErrNotFound
 	}
 	if err != nil {
 		return result, err
 	}
-	projectRows, err := s.read.Query(ctx, `select id, display_name, create_time, reporting_timezone from projects where org_id=$1 and id > $2 order by id limit $3`, id, projectCursor, limit+1)
+	projectRows, err := s.read.Query(ctx, `select id, display_name, create_time, reporting_timezone, deletion_state from projects where org_id=$1 and id > $2 order by id limit $3`, id, projectCursor, limit+1)
 	if err != nil {
 		return result, err
 	}
 	result.Projects = []Project{}
 	for projectRows.Next() {
 		var p Project
-		if err := projectRows.Scan(&p.ID, &p.Name, &p.CreatedAt, &p.ReportingTimezone); err != nil {
+		if err := projectRows.Scan(&p.ID, &p.Name, &p.CreatedAt, &p.ReportingTimezone, &p.DeletionState); err != nil {
 			projectRows.Close()
 			return result, err
 		}
@@ -517,6 +520,19 @@ func (s *Service) RenameOrganization(ctx context.Context, actor, id, name string
 		return err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
+	if _, err := tx.Exec(ctx, `select pg_advisory_xact_lock_shared(hashtext('pug-org-deletion'),hashtext($1::text))`, id); err != nil {
+		return err
+	}
+	var state string
+	if err := tx.QueryRow(ctx, `select deletion_state from orgs where id=$1`, id).Scan(&state); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return ErrNotFound
+		}
+		return err
+	}
+	if state != "active" {
+		return ErrOrgInactive
+	}
 	command, err := tx.Exec(ctx, `update orgs set display_name=$2 where id=$1`, id, name)
 	if err != nil {
 		return err

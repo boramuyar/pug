@@ -117,6 +117,9 @@ func (p *Purger) claim(ctx context.Context, conn *pgxpool.Conn, id string) (bool
 	if _, err := tx.Exec(ctx, `update projects set deletion_state='deleting' where id in (select project_id from deletion_project_steps where operation_id=$1) and deletion_state='pending_deletion'`, id); err != nil {
 		return false, err
 	}
+	if _, err := tx.Exec(ctx, `update orgs set deletion_state='deleting' where id=(select target_id from deletion_operations where id=$1 and target_type='organization') and deletion_state='pending_deletion'`, id); err != nil {
+		return false, err
+	}
 	if err := tx.Commit(ctx); err != nil {
 		return false, err
 	}
@@ -124,6 +127,17 @@ func (p *Purger) claim(ctx context.Context, conn *pgxpool.Conn, id string) (bool
 }
 
 func (p *Purger) process(ctx context.Context, id string) (resultErr error) {
+	var kind, orgID string
+	if err := p.pg.QueryRow(ctx, `select target_type,org_id from deletion_operations where id=$1`, id).Scan(&kind, &orgID); err != nil {
+		return err
+	}
+	// The subscription may have changed during the cancellation window.
+	// Fail before the first irreversible ClickHouse mutation.
+	if kind == "organization" {
+		if err := checkBilling(ctx, p.pg, orgID); err != nil {
+			return err
+		}
+	}
 	paused := true
 	defer func() {
 		if !paused {
@@ -220,13 +234,21 @@ func (p *Purger) process(ctx context.Context, id string) (resultErr error) {
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 	var targetID, actorID string
-	if err := tx.QueryRow(ctx, `select target_id,actor_id from deletion_operations where id=$1 for update`, id).Scan(&targetID, &actorID); err != nil {
+	if err := tx.QueryRow(ctx, `select target_type,target_id,actor_id from deletion_operations where id=$1 for update`, id).Scan(&kind, &targetID, &actorID); err != nil {
 		return err
+	}
+	if kind == "organization" {
+		if err := checkBilling(ctx, tx, targetID); err != nil {
+			return err
+		}
+		if _, err := tx.Exec(ctx, `delete from orgs where id=$1 and deletion_state in ('deleting','failed')`, targetID); err != nil {
+			return err
+		}
 	}
 	if _, err := tx.Exec(ctx, `update deletion_operations set status='deleted',finished_at=now(),last_error='' where id=$1`, id); err != nil {
 		return err
 	}
-	if err := audit(ctx, tx, actorID, "project.deleted", "project", targetID, ""); err != nil {
+	if err := audit(ctx, tx, actorID, kind+".deleted", kind, targetID, ""); err != nil {
 		return err
 	}
 	return tx.Commit(ctx)

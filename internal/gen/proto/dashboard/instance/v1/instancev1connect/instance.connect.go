@@ -69,6 +69,21 @@ const (
 	// InstanceAdminServiceRemoveMemberProcedure is the fully-qualified name of the
 	// InstanceAdminService's RemoveMember RPC.
 	InstanceAdminServiceRemoveMemberProcedure = "/dashboard.instance.v1.InstanceAdminService/RemoveMember"
+	// InstanceAdminServiceRequestProjectDeletionProcedure is the fully-qualified name of the
+	// InstanceAdminService's RequestProjectDeletion RPC.
+	InstanceAdminServiceRequestProjectDeletionProcedure = "/dashboard.instance.v1.InstanceAdminService/RequestProjectDeletion"
+	// InstanceAdminServiceRequestOrganizationDeletionProcedure is the fully-qualified name of the
+	// InstanceAdminService's RequestOrganizationDeletion RPC.
+	InstanceAdminServiceRequestOrganizationDeletionProcedure = "/dashboard.instance.v1.InstanceAdminService/RequestOrganizationDeletion"
+	// InstanceAdminServiceCancelOrganizationDeletionProcedure is the fully-qualified name of the
+	// InstanceAdminService's CancelOrganizationDeletion RPC.
+	InstanceAdminServiceCancelOrganizationDeletionProcedure = "/dashboard.instance.v1.InstanceAdminService/CancelOrganizationDeletion"
+	// InstanceAdminServiceRetryDeletionProcedure is the fully-qualified name of the
+	// InstanceAdminService's RetryDeletion RPC.
+	InstanceAdminServiceRetryDeletionProcedure = "/dashboard.instance.v1.InstanceAdminService/RetryDeletion"
+	// InstanceAdminServiceListDeletionsProcedure is the fully-qualified name of the
+	// InstanceAdminService's ListDeletions RPC.
+	InstanceAdminServiceListDeletionsProcedure = "/dashboard.instance.v1.InstanceAdminService/ListDeletions"
 )
 
 // InstanceAdminServiceClient is a client for the dashboard.instance.v1.InstanceAdminService
@@ -86,6 +101,11 @@ type InstanceAdminServiceClient interface {
 	RevokeInvitation(context.Context, *connect.Request[v1.RevokeInvitationRequest]) (*connect.Response[v1.RevokeInvitationResponse], error)
 	SetMemberRole(context.Context, *connect.Request[v1.SetMemberRoleRequest]) (*connect.Response[v1.SetMemberRoleResponse], error)
 	RemoveMember(context.Context, *connect.Request[v1.RemoveMemberRequest]) (*connect.Response[v1.RemoveMemberResponse], error)
+	RequestProjectDeletion(context.Context, *connect.Request[v1.RequestProjectDeletionRequest]) (*connect.Response[v1.RequestProjectDeletionResponse], error)
+	RequestOrganizationDeletion(context.Context, *connect.Request[v1.RequestOrganizationDeletionRequest]) (*connect.Response[v1.RequestOrganizationDeletionResponse], error)
+	CancelOrganizationDeletion(context.Context, *connect.Request[v1.CancelOrganizationDeletionRequest]) (*connect.Response[v1.CancelOrganizationDeletionResponse], error)
+	RetryDeletion(context.Context, *connect.Request[v1.RetryDeletionRequest]) (*connect.Response[v1.RetryDeletionResponse], error)
+	ListDeletions(context.Context, *connect.Request[v1.ListDeletionsRequest]) (*connect.Response[v1.ListDeletionsResponse], error)
 }
 
 // NewInstanceAdminServiceClient constructs a client for the
@@ -171,23 +191,58 @@ func NewInstanceAdminServiceClient(httpClient connect.HTTPClient, baseURL string
 			connect.WithSchema(instanceAdminServiceMethods.ByName("RemoveMember")),
 			connect.WithClientOptions(opts...),
 		),
+		requestProjectDeletion: connect.NewClient[v1.RequestProjectDeletionRequest, v1.RequestProjectDeletionResponse](
+			httpClient,
+			baseURL+InstanceAdminServiceRequestProjectDeletionProcedure,
+			connect.WithSchema(instanceAdminServiceMethods.ByName("RequestProjectDeletion")),
+			connect.WithClientOptions(opts...),
+		),
+		requestOrganizationDeletion: connect.NewClient[v1.RequestOrganizationDeletionRequest, v1.RequestOrganizationDeletionResponse](
+			httpClient,
+			baseURL+InstanceAdminServiceRequestOrganizationDeletionProcedure,
+			connect.WithSchema(instanceAdminServiceMethods.ByName("RequestOrganizationDeletion")),
+			connect.WithClientOptions(opts...),
+		),
+		cancelOrganizationDeletion: connect.NewClient[v1.CancelOrganizationDeletionRequest, v1.CancelOrganizationDeletionResponse](
+			httpClient,
+			baseURL+InstanceAdminServiceCancelOrganizationDeletionProcedure,
+			connect.WithSchema(instanceAdminServiceMethods.ByName("CancelOrganizationDeletion")),
+			connect.WithClientOptions(opts...),
+		),
+		retryDeletion: connect.NewClient[v1.RetryDeletionRequest, v1.RetryDeletionResponse](
+			httpClient,
+			baseURL+InstanceAdminServiceRetryDeletionProcedure,
+			connect.WithSchema(instanceAdminServiceMethods.ByName("RetryDeletion")),
+			connect.WithClientOptions(opts...),
+		),
+		listDeletions: connect.NewClient[v1.ListDeletionsRequest, v1.ListDeletionsResponse](
+			httpClient,
+			baseURL+InstanceAdminServiceListDeletionsProcedure,
+			connect.WithSchema(instanceAdminServiceMethods.ByName("ListDeletions")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
 // instanceAdminServiceClient implements InstanceAdminServiceClient.
 type instanceAdminServiceClient struct {
-	listUsers             *connect.Client[v1.ListUsersRequest, v1.ListUsersResponse]
-	setUserDisabled       *connect.Client[v1.SetUserDisabledRequest, v1.SetUserDisabledResponse]
-	revokeUserSessions    *connect.Client[v1.RevokeUserSessionsRequest, v1.RevokeUserSessionsResponse]
-	listOrganizations     *connect.Client[v1.ListOrganizationsRequest, v1.ListOrganizationsResponse]
-	getOrganization       *connect.Client[v1.GetOrganizationRequest, v1.GetOrganizationResponse]
-	provisionOrganization *connect.Client[v1.ProvisionOrganizationRequest, v1.ProvisionOrganizationResponse]
-	renameOrganization    *connect.Client[v1.RenameOrganizationRequest, v1.RenameOrganizationResponse]
-	inviteMember          *connect.Client[v1.InviteMemberRequest, v1.InviteMemberResponse]
-	resendInvitation      *connect.Client[v1.ResendInvitationRequest, v1.ResendInvitationResponse]
-	revokeInvitation      *connect.Client[v1.RevokeInvitationRequest, v1.RevokeInvitationResponse]
-	setMemberRole         *connect.Client[v1.SetMemberRoleRequest, v1.SetMemberRoleResponse]
-	removeMember          *connect.Client[v1.RemoveMemberRequest, v1.RemoveMemberResponse]
+	listUsers                   *connect.Client[v1.ListUsersRequest, v1.ListUsersResponse]
+	setUserDisabled             *connect.Client[v1.SetUserDisabledRequest, v1.SetUserDisabledResponse]
+	revokeUserSessions          *connect.Client[v1.RevokeUserSessionsRequest, v1.RevokeUserSessionsResponse]
+	listOrganizations           *connect.Client[v1.ListOrganizationsRequest, v1.ListOrganizationsResponse]
+	getOrganization             *connect.Client[v1.GetOrganizationRequest, v1.GetOrganizationResponse]
+	provisionOrganization       *connect.Client[v1.ProvisionOrganizationRequest, v1.ProvisionOrganizationResponse]
+	renameOrganization          *connect.Client[v1.RenameOrganizationRequest, v1.RenameOrganizationResponse]
+	inviteMember                *connect.Client[v1.InviteMemberRequest, v1.InviteMemberResponse]
+	resendInvitation            *connect.Client[v1.ResendInvitationRequest, v1.ResendInvitationResponse]
+	revokeInvitation            *connect.Client[v1.RevokeInvitationRequest, v1.RevokeInvitationResponse]
+	setMemberRole               *connect.Client[v1.SetMemberRoleRequest, v1.SetMemberRoleResponse]
+	removeMember                *connect.Client[v1.RemoveMemberRequest, v1.RemoveMemberResponse]
+	requestProjectDeletion      *connect.Client[v1.RequestProjectDeletionRequest, v1.RequestProjectDeletionResponse]
+	requestOrganizationDeletion *connect.Client[v1.RequestOrganizationDeletionRequest, v1.RequestOrganizationDeletionResponse]
+	cancelOrganizationDeletion  *connect.Client[v1.CancelOrganizationDeletionRequest, v1.CancelOrganizationDeletionResponse]
+	retryDeletion               *connect.Client[v1.RetryDeletionRequest, v1.RetryDeletionResponse]
+	listDeletions               *connect.Client[v1.ListDeletionsRequest, v1.ListDeletionsResponse]
 }
 
 // ListUsers calls dashboard.instance.v1.InstanceAdminService.ListUsers.
@@ -250,6 +305,33 @@ func (c *instanceAdminServiceClient) RemoveMember(ctx context.Context, req *conn
 	return c.removeMember.CallUnary(ctx, req)
 }
 
+// RequestProjectDeletion calls dashboard.instance.v1.InstanceAdminService.RequestProjectDeletion.
+func (c *instanceAdminServiceClient) RequestProjectDeletion(ctx context.Context, req *connect.Request[v1.RequestProjectDeletionRequest]) (*connect.Response[v1.RequestProjectDeletionResponse], error) {
+	return c.requestProjectDeletion.CallUnary(ctx, req)
+}
+
+// RequestOrganizationDeletion calls
+// dashboard.instance.v1.InstanceAdminService.RequestOrganizationDeletion.
+func (c *instanceAdminServiceClient) RequestOrganizationDeletion(ctx context.Context, req *connect.Request[v1.RequestOrganizationDeletionRequest]) (*connect.Response[v1.RequestOrganizationDeletionResponse], error) {
+	return c.requestOrganizationDeletion.CallUnary(ctx, req)
+}
+
+// CancelOrganizationDeletion calls
+// dashboard.instance.v1.InstanceAdminService.CancelOrganizationDeletion.
+func (c *instanceAdminServiceClient) CancelOrganizationDeletion(ctx context.Context, req *connect.Request[v1.CancelOrganizationDeletionRequest]) (*connect.Response[v1.CancelOrganizationDeletionResponse], error) {
+	return c.cancelOrganizationDeletion.CallUnary(ctx, req)
+}
+
+// RetryDeletion calls dashboard.instance.v1.InstanceAdminService.RetryDeletion.
+func (c *instanceAdminServiceClient) RetryDeletion(ctx context.Context, req *connect.Request[v1.RetryDeletionRequest]) (*connect.Response[v1.RetryDeletionResponse], error) {
+	return c.retryDeletion.CallUnary(ctx, req)
+}
+
+// ListDeletions calls dashboard.instance.v1.InstanceAdminService.ListDeletions.
+func (c *instanceAdminServiceClient) ListDeletions(ctx context.Context, req *connect.Request[v1.ListDeletionsRequest]) (*connect.Response[v1.ListDeletionsResponse], error) {
+	return c.listDeletions.CallUnary(ctx, req)
+}
+
 // InstanceAdminServiceHandler is an implementation of the
 // dashboard.instance.v1.InstanceAdminService service.
 type InstanceAdminServiceHandler interface {
@@ -265,6 +347,11 @@ type InstanceAdminServiceHandler interface {
 	RevokeInvitation(context.Context, *connect.Request[v1.RevokeInvitationRequest]) (*connect.Response[v1.RevokeInvitationResponse], error)
 	SetMemberRole(context.Context, *connect.Request[v1.SetMemberRoleRequest]) (*connect.Response[v1.SetMemberRoleResponse], error)
 	RemoveMember(context.Context, *connect.Request[v1.RemoveMemberRequest]) (*connect.Response[v1.RemoveMemberResponse], error)
+	RequestProjectDeletion(context.Context, *connect.Request[v1.RequestProjectDeletionRequest]) (*connect.Response[v1.RequestProjectDeletionResponse], error)
+	RequestOrganizationDeletion(context.Context, *connect.Request[v1.RequestOrganizationDeletionRequest]) (*connect.Response[v1.RequestOrganizationDeletionResponse], error)
+	CancelOrganizationDeletion(context.Context, *connect.Request[v1.CancelOrganizationDeletionRequest]) (*connect.Response[v1.CancelOrganizationDeletionResponse], error)
+	RetryDeletion(context.Context, *connect.Request[v1.RetryDeletionRequest]) (*connect.Response[v1.RetryDeletionResponse], error)
+	ListDeletions(context.Context, *connect.Request[v1.ListDeletionsRequest]) (*connect.Response[v1.ListDeletionsResponse], error)
 }
 
 // NewInstanceAdminServiceHandler builds an HTTP handler from the service implementation. It returns
@@ -346,6 +433,36 @@ func NewInstanceAdminServiceHandler(svc InstanceAdminServiceHandler, opts ...con
 		connect.WithSchema(instanceAdminServiceMethods.ByName("RemoveMember")),
 		connect.WithHandlerOptions(opts...),
 	)
+	instanceAdminServiceRequestProjectDeletionHandler := connect.NewUnaryHandler(
+		InstanceAdminServiceRequestProjectDeletionProcedure,
+		svc.RequestProjectDeletion,
+		connect.WithSchema(instanceAdminServiceMethods.ByName("RequestProjectDeletion")),
+		connect.WithHandlerOptions(opts...),
+	)
+	instanceAdminServiceRequestOrganizationDeletionHandler := connect.NewUnaryHandler(
+		InstanceAdminServiceRequestOrganizationDeletionProcedure,
+		svc.RequestOrganizationDeletion,
+		connect.WithSchema(instanceAdminServiceMethods.ByName("RequestOrganizationDeletion")),
+		connect.WithHandlerOptions(opts...),
+	)
+	instanceAdminServiceCancelOrganizationDeletionHandler := connect.NewUnaryHandler(
+		InstanceAdminServiceCancelOrganizationDeletionProcedure,
+		svc.CancelOrganizationDeletion,
+		connect.WithSchema(instanceAdminServiceMethods.ByName("CancelOrganizationDeletion")),
+		connect.WithHandlerOptions(opts...),
+	)
+	instanceAdminServiceRetryDeletionHandler := connect.NewUnaryHandler(
+		InstanceAdminServiceRetryDeletionProcedure,
+		svc.RetryDeletion,
+		connect.WithSchema(instanceAdminServiceMethods.ByName("RetryDeletion")),
+		connect.WithHandlerOptions(opts...),
+	)
+	instanceAdminServiceListDeletionsHandler := connect.NewUnaryHandler(
+		InstanceAdminServiceListDeletionsProcedure,
+		svc.ListDeletions,
+		connect.WithSchema(instanceAdminServiceMethods.ByName("ListDeletions")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/dashboard.instance.v1.InstanceAdminService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case InstanceAdminServiceListUsersProcedure:
@@ -372,6 +489,16 @@ func NewInstanceAdminServiceHandler(svc InstanceAdminServiceHandler, opts ...con
 			instanceAdminServiceSetMemberRoleHandler.ServeHTTP(w, r)
 		case InstanceAdminServiceRemoveMemberProcedure:
 			instanceAdminServiceRemoveMemberHandler.ServeHTTP(w, r)
+		case InstanceAdminServiceRequestProjectDeletionProcedure:
+			instanceAdminServiceRequestProjectDeletionHandler.ServeHTTP(w, r)
+		case InstanceAdminServiceRequestOrganizationDeletionProcedure:
+			instanceAdminServiceRequestOrganizationDeletionHandler.ServeHTTP(w, r)
+		case InstanceAdminServiceCancelOrganizationDeletionProcedure:
+			instanceAdminServiceCancelOrganizationDeletionHandler.ServeHTTP(w, r)
+		case InstanceAdminServiceRetryDeletionProcedure:
+			instanceAdminServiceRetryDeletionHandler.ServeHTTP(w, r)
+		case InstanceAdminServiceListDeletionsProcedure:
+			instanceAdminServiceListDeletionsHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -427,4 +554,24 @@ func (UnimplementedInstanceAdminServiceHandler) SetMemberRole(context.Context, *
 
 func (UnimplementedInstanceAdminServiceHandler) RemoveMember(context.Context, *connect.Request[v1.RemoveMemberRequest]) (*connect.Response[v1.RemoveMemberResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("dashboard.instance.v1.InstanceAdminService.RemoveMember is not implemented"))
+}
+
+func (UnimplementedInstanceAdminServiceHandler) RequestProjectDeletion(context.Context, *connect.Request[v1.RequestProjectDeletionRequest]) (*connect.Response[v1.RequestProjectDeletionResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("dashboard.instance.v1.InstanceAdminService.RequestProjectDeletion is not implemented"))
+}
+
+func (UnimplementedInstanceAdminServiceHandler) RequestOrganizationDeletion(context.Context, *connect.Request[v1.RequestOrganizationDeletionRequest]) (*connect.Response[v1.RequestOrganizationDeletionResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("dashboard.instance.v1.InstanceAdminService.RequestOrganizationDeletion is not implemented"))
+}
+
+func (UnimplementedInstanceAdminServiceHandler) CancelOrganizationDeletion(context.Context, *connect.Request[v1.CancelOrganizationDeletionRequest]) (*connect.Response[v1.CancelOrganizationDeletionResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("dashboard.instance.v1.InstanceAdminService.CancelOrganizationDeletion is not implemented"))
+}
+
+func (UnimplementedInstanceAdminServiceHandler) RetryDeletion(context.Context, *connect.Request[v1.RetryDeletionRequest]) (*connect.Response[v1.RetryDeletionResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("dashboard.instance.v1.InstanceAdminService.RetryDeletion is not implemented"))
+}
+
+func (UnimplementedInstanceAdminServiceHandler) ListDeletions(context.Context, *connect.Request[v1.ListDeletionsRequest]) (*connect.Response[v1.ListDeletionsResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("dashboard.instance.v1.InstanceAdminService.ListDeletions is not implemented"))
 }

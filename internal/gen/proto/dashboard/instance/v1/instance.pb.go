@@ -225,6 +225,7 @@ type Organization struct {
 	ProjectCount  *uint32                `protobuf:"varint,5,opt,name=project_count,json=projectCount" json:"project_count,omitempty"`
 	AdminEmails   []string               `protobuf:"bytes,6,rep,name=admin_emails,json=adminEmails" json:"admin_emails,omitempty"`
 	NeedsAdmin    *bool                  `protobuf:"varint,7,opt,name=needs_admin,json=needsAdmin" json:"needs_admin,omitempty"`
+	DeletionState *string                `protobuf:"bytes,8,opt,name=deletion_state,json=deletionState" json:"deletion_state,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -308,12 +309,20 @@ func (x *Organization) GetNeedsAdmin() bool {
 	return false
 }
 
+func (x *Organization) GetDeletionState() string {
+	if x != nil && x.DeletionState != nil {
+		return *x.DeletionState
+	}
+	return ""
+}
+
 type Project struct {
 	state             protoimpl.MessageState `protogen:"open.v1"`
 	Id                *string                `protobuf:"bytes,1,opt,name=id" json:"id,omitempty"`
 	Name              *string                `protobuf:"bytes,2,opt,name=name" json:"name,omitempty"`
 	CreatedAt         *string                `protobuf:"bytes,3,opt,name=created_at,json=createdAt" json:"created_at,omitempty"`
 	ReportingTimezone *string                `protobuf:"bytes,4,opt,name=reporting_timezone,json=reportingTimezone" json:"reporting_timezone,omitempty"`
+	DeletionState     *string                `protobuf:"bytes,5,opt,name=deletion_state,json=deletionState" json:"deletion_state,omitempty"`
 	unknownFields     protoimpl.UnknownFields
 	sizeCache         protoimpl.SizeCache
 }
@@ -372,6 +381,13 @@ func (x *Project) GetCreatedAt() string {
 func (x *Project) GetReportingTimezone() string {
 	if x != nil && x.ReportingTimezone != nil {
 		return *x.ReportingTimezone
+	}
+	return ""
+}
+
+func (x *Project) GetDeletionState() string {
+	if x != nil && x.DeletionState != nil {
+		return *x.DeletionState
 	}
 	return ""
 }
@@ -1716,6 +1732,719 @@ func (*RemoveMemberResponse) Descriptor() ([]byte, []int) {
 	return file_dashboard_instance_v1_instance_proto_rawDescGZIP(), []int{28}
 }
 
+type DeletionOperation struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Id            *string                `protobuf:"bytes,1,opt,name=id" json:"id,omitempty"`
+	TargetType    *string                `protobuf:"bytes,2,opt,name=target_type,json=targetType" json:"target_type,omitempty"`
+	TargetId      *string                `protobuf:"bytes,3,opt,name=target_id,json=targetId" json:"target_id,omitempty"`
+	TargetName    *string                `protobuf:"bytes,4,opt,name=target_name,json=targetName" json:"target_name,omitempty"`
+	OrgId         *string                `protobuf:"bytes,5,opt,name=org_id,json=orgId" json:"org_id,omitempty"`
+	Status        *string                `protobuf:"bytes,6,opt,name=status" json:"status,omitempty"`
+	RequestedAt   *string                `protobuf:"bytes,7,opt,name=requested_at,json=requestedAt" json:"requested_at,omitempty"`
+	PurgeAfter    *string                `protobuf:"bytes,8,opt,name=purge_after,json=purgeAfter" json:"purge_after,omitempty"`
+	FinishedAt    *string                `protobuf:"bytes,9,opt,name=finished_at,json=finishedAt" json:"finished_at,omitempty"`
+	LastError     *string                `protobuf:"bytes,10,opt,name=last_error,json=lastError" json:"last_error,omitempty"`
+	Projects      []*DeletionProjectStep `protobuf:"bytes,11,rep,name=projects" json:"projects,omitempty"`
+	ActorId       *string                `protobuf:"bytes,12,opt,name=actor_id,json=actorId" json:"actor_id,omitempty"`
+	Reason        *string                `protobuf:"bytes,13,opt,name=reason" json:"reason,omitempty"`
+	ActorEmail    *string                `protobuf:"bytes,14,opt,name=actor_email,json=actorEmail" json:"actor_email,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DeletionOperation) Reset() {
+	*x = DeletionOperation{}
+	mi := &file_dashboard_instance_v1_instance_proto_msgTypes[29]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DeletionOperation) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DeletionOperation) ProtoMessage() {}
+
+func (x *DeletionOperation) ProtoReflect() protoreflect.Message {
+	mi := &file_dashboard_instance_v1_instance_proto_msgTypes[29]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DeletionOperation.ProtoReflect.Descriptor instead.
+func (*DeletionOperation) Descriptor() ([]byte, []int) {
+	return file_dashboard_instance_v1_instance_proto_rawDescGZIP(), []int{29}
+}
+
+func (x *DeletionOperation) GetId() string {
+	if x != nil && x.Id != nil {
+		return *x.Id
+	}
+	return ""
+}
+
+func (x *DeletionOperation) GetTargetType() string {
+	if x != nil && x.TargetType != nil {
+		return *x.TargetType
+	}
+	return ""
+}
+
+func (x *DeletionOperation) GetTargetId() string {
+	if x != nil && x.TargetId != nil {
+		return *x.TargetId
+	}
+	return ""
+}
+
+func (x *DeletionOperation) GetTargetName() string {
+	if x != nil && x.TargetName != nil {
+		return *x.TargetName
+	}
+	return ""
+}
+
+func (x *DeletionOperation) GetOrgId() string {
+	if x != nil && x.OrgId != nil {
+		return *x.OrgId
+	}
+	return ""
+}
+
+func (x *DeletionOperation) GetStatus() string {
+	if x != nil && x.Status != nil {
+		return *x.Status
+	}
+	return ""
+}
+
+func (x *DeletionOperation) GetRequestedAt() string {
+	if x != nil && x.RequestedAt != nil {
+		return *x.RequestedAt
+	}
+	return ""
+}
+
+func (x *DeletionOperation) GetPurgeAfter() string {
+	if x != nil && x.PurgeAfter != nil {
+		return *x.PurgeAfter
+	}
+	return ""
+}
+
+func (x *DeletionOperation) GetFinishedAt() string {
+	if x != nil && x.FinishedAt != nil {
+		return *x.FinishedAt
+	}
+	return ""
+}
+
+func (x *DeletionOperation) GetLastError() string {
+	if x != nil && x.LastError != nil {
+		return *x.LastError
+	}
+	return ""
+}
+
+func (x *DeletionOperation) GetProjects() []*DeletionProjectStep {
+	if x != nil {
+		return x.Projects
+	}
+	return nil
+}
+
+func (x *DeletionOperation) GetActorId() string {
+	if x != nil && x.ActorId != nil {
+		return *x.ActorId
+	}
+	return ""
+}
+
+func (x *DeletionOperation) GetReason() string {
+	if x != nil && x.Reason != nil {
+		return *x.Reason
+	}
+	return ""
+}
+
+func (x *DeletionOperation) GetActorEmail() string {
+	if x != nil && x.ActorEmail != nil {
+		return *x.ActorEmail
+	}
+	return ""
+}
+
+type DeletionProjectStep struct {
+	state          protoimpl.MessageState `protogen:"open.v1"`
+	ProjectId      *string                `protobuf:"bytes,1,opt,name=project_id,json=projectId" json:"project_id,omitempty"`
+	ProjectName    *string                `protobuf:"bytes,2,opt,name=project_name,json=projectName" json:"project_name,omitempty"`
+	ClickhouseDone *bool                  `protobuf:"varint,3,opt,name=clickhouse_done,json=clickhouseDone" json:"clickhouse_done,omitempty"`
+	PostgresDone   *bool                  `protobuf:"varint,4,opt,name=postgres_done,json=postgresDone" json:"postgres_done,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
+}
+
+func (x *DeletionProjectStep) Reset() {
+	*x = DeletionProjectStep{}
+	mi := &file_dashboard_instance_v1_instance_proto_msgTypes[30]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DeletionProjectStep) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DeletionProjectStep) ProtoMessage() {}
+
+func (x *DeletionProjectStep) ProtoReflect() protoreflect.Message {
+	mi := &file_dashboard_instance_v1_instance_proto_msgTypes[30]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DeletionProjectStep.ProtoReflect.Descriptor instead.
+func (*DeletionProjectStep) Descriptor() ([]byte, []int) {
+	return file_dashboard_instance_v1_instance_proto_rawDescGZIP(), []int{30}
+}
+
+func (x *DeletionProjectStep) GetProjectId() string {
+	if x != nil && x.ProjectId != nil {
+		return *x.ProjectId
+	}
+	return ""
+}
+
+func (x *DeletionProjectStep) GetProjectName() string {
+	if x != nil && x.ProjectName != nil {
+		return *x.ProjectName
+	}
+	return ""
+}
+
+func (x *DeletionProjectStep) GetClickhouseDone() bool {
+	if x != nil && x.ClickhouseDone != nil {
+		return *x.ClickhouseDone
+	}
+	return false
+}
+
+func (x *DeletionProjectStep) GetPostgresDone() bool {
+	if x != nil && x.PostgresDone != nil {
+		return *x.PostgresDone
+	}
+	return false
+}
+
+type RequestProjectDeletionRequest struct {
+	state            protoimpl.MessageState `protogen:"open.v1"`
+	OrgId            *string                `protobuf:"bytes,1,opt,name=org_id,json=orgId" json:"org_id,omitempty"`
+	ProjectId        *string                `protobuf:"bytes,2,opt,name=project_id,json=projectId" json:"project_id,omitempty"`
+	ConfirmationName *string                `protobuf:"bytes,3,opt,name=confirmation_name,json=confirmationName" json:"confirmation_name,omitempty"`
+	unknownFields    protoimpl.UnknownFields
+	sizeCache        protoimpl.SizeCache
+}
+
+func (x *RequestProjectDeletionRequest) Reset() {
+	*x = RequestProjectDeletionRequest{}
+	mi := &file_dashboard_instance_v1_instance_proto_msgTypes[31]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RequestProjectDeletionRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RequestProjectDeletionRequest) ProtoMessage() {}
+
+func (x *RequestProjectDeletionRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_dashboard_instance_v1_instance_proto_msgTypes[31]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RequestProjectDeletionRequest.ProtoReflect.Descriptor instead.
+func (*RequestProjectDeletionRequest) Descriptor() ([]byte, []int) {
+	return file_dashboard_instance_v1_instance_proto_rawDescGZIP(), []int{31}
+}
+
+func (x *RequestProjectDeletionRequest) GetOrgId() string {
+	if x != nil && x.OrgId != nil {
+		return *x.OrgId
+	}
+	return ""
+}
+
+func (x *RequestProjectDeletionRequest) GetProjectId() string {
+	if x != nil && x.ProjectId != nil {
+		return *x.ProjectId
+	}
+	return ""
+}
+
+func (x *RequestProjectDeletionRequest) GetConfirmationName() string {
+	if x != nil && x.ConfirmationName != nil {
+		return *x.ConfirmationName
+	}
+	return ""
+}
+
+type RequestOrganizationDeletionRequest struct {
+	state          protoimpl.MessageState `protogen:"open.v1"`
+	OrgId          *string                `protobuf:"bytes,1,opt,name=org_id,json=orgId" json:"org_id,omitempty"`
+	ConfirmationId *string                `protobuf:"bytes,2,opt,name=confirmation_id,json=confirmationId" json:"confirmation_id,omitempty"`
+	Reason         *string                `protobuf:"bytes,3,opt,name=reason" json:"reason,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
+}
+
+func (x *RequestOrganizationDeletionRequest) Reset() {
+	*x = RequestOrganizationDeletionRequest{}
+	mi := &file_dashboard_instance_v1_instance_proto_msgTypes[32]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RequestOrganizationDeletionRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RequestOrganizationDeletionRequest) ProtoMessage() {}
+
+func (x *RequestOrganizationDeletionRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_dashboard_instance_v1_instance_proto_msgTypes[32]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RequestOrganizationDeletionRequest.ProtoReflect.Descriptor instead.
+func (*RequestOrganizationDeletionRequest) Descriptor() ([]byte, []int) {
+	return file_dashboard_instance_v1_instance_proto_rawDescGZIP(), []int{32}
+}
+
+func (x *RequestOrganizationDeletionRequest) GetOrgId() string {
+	if x != nil && x.OrgId != nil {
+		return *x.OrgId
+	}
+	return ""
+}
+
+func (x *RequestOrganizationDeletionRequest) GetConfirmationId() string {
+	if x != nil && x.ConfirmationId != nil {
+		return *x.ConfirmationId
+	}
+	return ""
+}
+
+func (x *RequestOrganizationDeletionRequest) GetReason() string {
+	if x != nil && x.Reason != nil {
+		return *x.Reason
+	}
+	return ""
+}
+
+type CancelOrganizationDeletionRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	OperationId   *string                `protobuf:"bytes,1,opt,name=operation_id,json=operationId" json:"operation_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CancelOrganizationDeletionRequest) Reset() {
+	*x = CancelOrganizationDeletionRequest{}
+	mi := &file_dashboard_instance_v1_instance_proto_msgTypes[33]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CancelOrganizationDeletionRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CancelOrganizationDeletionRequest) ProtoMessage() {}
+
+func (x *CancelOrganizationDeletionRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_dashboard_instance_v1_instance_proto_msgTypes[33]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CancelOrganizationDeletionRequest.ProtoReflect.Descriptor instead.
+func (*CancelOrganizationDeletionRequest) Descriptor() ([]byte, []int) {
+	return file_dashboard_instance_v1_instance_proto_rawDescGZIP(), []int{33}
+}
+
+func (x *CancelOrganizationDeletionRequest) GetOperationId() string {
+	if x != nil && x.OperationId != nil {
+		return *x.OperationId
+	}
+	return ""
+}
+
+type RetryDeletionRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	OperationId   *string                `protobuf:"bytes,1,opt,name=operation_id,json=operationId" json:"operation_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RetryDeletionRequest) Reset() {
+	*x = RetryDeletionRequest{}
+	mi := &file_dashboard_instance_v1_instance_proto_msgTypes[34]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RetryDeletionRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RetryDeletionRequest) ProtoMessage() {}
+
+func (x *RetryDeletionRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_dashboard_instance_v1_instance_proto_msgTypes[34]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RetryDeletionRequest.ProtoReflect.Descriptor instead.
+func (*RetryDeletionRequest) Descriptor() ([]byte, []int) {
+	return file_dashboard_instance_v1_instance_proto_rawDescGZIP(), []int{34}
+}
+
+func (x *RetryDeletionRequest) GetOperationId() string {
+	if x != nil && x.OperationId != nil {
+		return *x.OperationId
+	}
+	return ""
+}
+
+type RequestProjectDeletionResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Operation     *DeletionOperation     `protobuf:"bytes,1,opt,name=operation" json:"operation,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RequestProjectDeletionResponse) Reset() {
+	*x = RequestProjectDeletionResponse{}
+	mi := &file_dashboard_instance_v1_instance_proto_msgTypes[35]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RequestProjectDeletionResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RequestProjectDeletionResponse) ProtoMessage() {}
+
+func (x *RequestProjectDeletionResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_dashboard_instance_v1_instance_proto_msgTypes[35]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RequestProjectDeletionResponse.ProtoReflect.Descriptor instead.
+func (*RequestProjectDeletionResponse) Descriptor() ([]byte, []int) {
+	return file_dashboard_instance_v1_instance_proto_rawDescGZIP(), []int{35}
+}
+
+func (x *RequestProjectDeletionResponse) GetOperation() *DeletionOperation {
+	if x != nil {
+		return x.Operation
+	}
+	return nil
+}
+
+type RequestOrganizationDeletionResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Operation     *DeletionOperation     `protobuf:"bytes,1,opt,name=operation" json:"operation,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RequestOrganizationDeletionResponse) Reset() {
+	*x = RequestOrganizationDeletionResponse{}
+	mi := &file_dashboard_instance_v1_instance_proto_msgTypes[36]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RequestOrganizationDeletionResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RequestOrganizationDeletionResponse) ProtoMessage() {}
+
+func (x *RequestOrganizationDeletionResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_dashboard_instance_v1_instance_proto_msgTypes[36]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RequestOrganizationDeletionResponse.ProtoReflect.Descriptor instead.
+func (*RequestOrganizationDeletionResponse) Descriptor() ([]byte, []int) {
+	return file_dashboard_instance_v1_instance_proto_rawDescGZIP(), []int{36}
+}
+
+func (x *RequestOrganizationDeletionResponse) GetOperation() *DeletionOperation {
+	if x != nil {
+		return x.Operation
+	}
+	return nil
+}
+
+type CancelOrganizationDeletionResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Operation     *DeletionOperation     `protobuf:"bytes,1,opt,name=operation" json:"operation,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CancelOrganizationDeletionResponse) Reset() {
+	*x = CancelOrganizationDeletionResponse{}
+	mi := &file_dashboard_instance_v1_instance_proto_msgTypes[37]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CancelOrganizationDeletionResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CancelOrganizationDeletionResponse) ProtoMessage() {}
+
+func (x *CancelOrganizationDeletionResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_dashboard_instance_v1_instance_proto_msgTypes[37]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CancelOrganizationDeletionResponse.ProtoReflect.Descriptor instead.
+func (*CancelOrganizationDeletionResponse) Descriptor() ([]byte, []int) {
+	return file_dashboard_instance_v1_instance_proto_rawDescGZIP(), []int{37}
+}
+
+func (x *CancelOrganizationDeletionResponse) GetOperation() *DeletionOperation {
+	if x != nil {
+		return x.Operation
+	}
+	return nil
+}
+
+type RetryDeletionResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Operation     *DeletionOperation     `protobuf:"bytes,1,opt,name=operation" json:"operation,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RetryDeletionResponse) Reset() {
+	*x = RetryDeletionResponse{}
+	mi := &file_dashboard_instance_v1_instance_proto_msgTypes[38]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RetryDeletionResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RetryDeletionResponse) ProtoMessage() {}
+
+func (x *RetryDeletionResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_dashboard_instance_v1_instance_proto_msgTypes[38]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RetryDeletionResponse.ProtoReflect.Descriptor instead.
+func (*RetryDeletionResponse) Descriptor() ([]byte, []int) {
+	return file_dashboard_instance_v1_instance_proto_rawDescGZIP(), []int{38}
+}
+
+func (x *RetryDeletionResponse) GetOperation() *DeletionOperation {
+	if x != nil {
+		return x.Operation
+	}
+	return nil
+}
+
+type ListDeletionsRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Empty org_id lists deletion history across the instance.
+	OrgId         *string `protobuf:"bytes,1,opt,name=org_id,json=orgId" json:"org_id,omitempty"`
+	PageToken     *string `protobuf:"bytes,2,opt,name=page_token,json=pageToken" json:"page_token,omitempty"`
+	PageSize      *uint32 `protobuf:"varint,3,opt,name=page_size,json=pageSize" json:"page_size,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListDeletionsRequest) Reset() {
+	*x = ListDeletionsRequest{}
+	mi := &file_dashboard_instance_v1_instance_proto_msgTypes[39]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListDeletionsRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListDeletionsRequest) ProtoMessage() {}
+
+func (x *ListDeletionsRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_dashboard_instance_v1_instance_proto_msgTypes[39]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListDeletionsRequest.ProtoReflect.Descriptor instead.
+func (*ListDeletionsRequest) Descriptor() ([]byte, []int) {
+	return file_dashboard_instance_v1_instance_proto_rawDescGZIP(), []int{39}
+}
+
+func (x *ListDeletionsRequest) GetOrgId() string {
+	if x != nil && x.OrgId != nil {
+		return *x.OrgId
+	}
+	return ""
+}
+
+func (x *ListDeletionsRequest) GetPageToken() string {
+	if x != nil && x.PageToken != nil {
+		return *x.PageToken
+	}
+	return ""
+}
+
+func (x *ListDeletionsRequest) GetPageSize() uint32 {
+	if x != nil && x.PageSize != nil {
+		return *x.PageSize
+	}
+	return 0
+}
+
+type ListDeletionsResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Operations    []*DeletionOperation   `protobuf:"bytes,1,rep,name=operations" json:"operations,omitempty"`
+	NextPageToken *string                `protobuf:"bytes,2,opt,name=next_page_token,json=nextPageToken" json:"next_page_token,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListDeletionsResponse) Reset() {
+	*x = ListDeletionsResponse{}
+	mi := &file_dashboard_instance_v1_instance_proto_msgTypes[40]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListDeletionsResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListDeletionsResponse) ProtoMessage() {}
+
+func (x *ListDeletionsResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_dashboard_instance_v1_instance_proto_msgTypes[40]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListDeletionsResponse.ProtoReflect.Descriptor instead.
+func (*ListDeletionsResponse) Descriptor() ([]byte, []int) {
+	return file_dashboard_instance_v1_instance_proto_rawDescGZIP(), []int{40}
+}
+
+func (x *ListDeletionsResponse) GetOperations() []*DeletionOperation {
+	if x != nil {
+		return x.Operations
+	}
+	return nil
+}
+
+func (x *ListDeletionsResponse) GetNextPageToken() string {
+	if x != nil && x.NextPageToken != nil {
+		return *x.NextPageToken
+	}
+	return ""
+}
+
 var File_dashboard_instance_v1_instance_proto protoreflect.FileDescriptor
 
 const file_dashboard_instance_v1_instance_proto_rawDesc = "" +
@@ -1733,7 +2462,7 @@ const file_dashboard_instance_v1_instance_proto_rawDesc = "" +
 	"Membership\x12\x15\n" +
 	"\x06org_id\x18\x01 \x01(\tR\x05orgId\x12\x19\n" +
 	"\borg_name\x18\x02 \x01(\tR\aorgName\x12.\n" +
-	"\x04role\x18\x03 \x01(\x0e2\x1a.dashboard.orgs.v1.OrgRoleR\x04role\"\xdd\x01\n" +
+	"\x04role\x18\x03 \x01(\x0e2\x1a.dashboard.orgs.v1.OrgRoleR\x04role\"\x84\x02\n" +
 	"\fOrganization\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12\x1d\n" +
@@ -1743,13 +2472,15 @@ const file_dashboard_instance_v1_instance_proto_rawDesc = "" +
 	"\rproject_count\x18\x05 \x01(\rR\fprojectCount\x12!\n" +
 	"\fadmin_emails\x18\x06 \x03(\tR\vadminEmails\x12\x1f\n" +
 	"\vneeds_admin\x18\a \x01(\bR\n" +
-	"needsAdmin\"{\n" +
+	"needsAdmin\x12%\n" +
+	"\x0edeletion_state\x18\b \x01(\tR\rdeletionState\"\xa2\x01\n" +
 	"\aProject\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12\x1d\n" +
 	"\n" +
 	"created_at\x18\x03 \x01(\tR\tcreatedAt\x12-\n" +
-	"\x12reporting_timezone\x18\x04 \x01(\tR\x11reportingTimezone\"\x81\x01\n" +
+	"\x12reporting_timezone\x18\x04 \x01(\tR\x11reportingTimezone\x12%\n" +
+	"\x0edeletion_state\x18\x05 \x01(\tR\rdeletionState\"\x81\x01\n" +
 	"\n" +
 	"Invitation\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x14\n" +
@@ -1841,11 +2572,70 @@ const file_dashboard_instance_v1_instance_proto_rawDesc = "" +
 	"\x13RemoveMemberRequest\x12\x1d\n" +
 	"\x06org_id\x18\x01 \x01(\tB\x06\xbaH\x03\xc8\x01\x01R\x05orgId\x12\x1f\n" +
 	"\auser_id\x18\x02 \x01(\tB\x06\xbaH\x03\xc8\x01\x01R\x06userId\"\x16\n" +
-	"\x14RemoveMemberResponse*b\n" +
+	"\x14RemoveMemberResponse\"\xd1\x03\n" +
+	"\x11DeletionOperation\x12\x0e\n" +
+	"\x02id\x18\x01 \x01(\tR\x02id\x12\x1f\n" +
+	"\vtarget_type\x18\x02 \x01(\tR\n" +
+	"targetType\x12\x1b\n" +
+	"\ttarget_id\x18\x03 \x01(\tR\btargetId\x12\x1f\n" +
+	"\vtarget_name\x18\x04 \x01(\tR\n" +
+	"targetName\x12\x15\n" +
+	"\x06org_id\x18\x05 \x01(\tR\x05orgId\x12\x16\n" +
+	"\x06status\x18\x06 \x01(\tR\x06status\x12!\n" +
+	"\frequested_at\x18\a \x01(\tR\vrequestedAt\x12\x1f\n" +
+	"\vpurge_after\x18\b \x01(\tR\n" +
+	"purgeAfter\x12\x1f\n" +
+	"\vfinished_at\x18\t \x01(\tR\n" +
+	"finishedAt\x12\x1d\n" +
+	"\n" +
+	"last_error\x18\n" +
+	" \x01(\tR\tlastError\x12F\n" +
+	"\bprojects\x18\v \x03(\v2*.dashboard.instance.v1.DeletionProjectStepR\bprojects\x12\x19\n" +
+	"\bactor_id\x18\f \x01(\tR\aactorId\x12\x16\n" +
+	"\x06reason\x18\r \x01(\tR\x06reason\x12\x1f\n" +
+	"\vactor_email\x18\x0e \x01(\tR\n" +
+	"actorEmail\"\xa5\x01\n" +
+	"\x13DeletionProjectStep\x12\x1d\n" +
+	"\n" +
+	"project_id\x18\x01 \x01(\tR\tprojectId\x12!\n" +
+	"\fproject_name\x18\x02 \x01(\tR\vprojectName\x12'\n" +
+	"\x0fclickhouse_done\x18\x03 \x01(\bR\x0eclickhouseDone\x12#\n" +
+	"\rpostgres_done\x18\x04 \x01(\bR\fpostgresDone\"\x9a\x01\n" +
+	"\x1dRequestProjectDeletionRequest\x12\x1d\n" +
+	"\x06org_id\x18\x01 \x01(\tB\x06\xbaH\x03\xc8\x01\x01R\x05orgId\x12%\n" +
+	"\n" +
+	"project_id\x18\x02 \x01(\tB\x06\xbaH\x03\xc8\x01\x01R\tprojectId\x123\n" +
+	"\x11confirmation_name\x18\x03 \x01(\tB\x06\xbaH\x03\xc8\x01\x01R\x10confirmationName\"\x94\x01\n" +
+	"\"RequestOrganizationDeletionRequest\x12\x1d\n" +
+	"\x06org_id\x18\x01 \x01(\tB\x06\xbaH\x03\xc8\x01\x01R\x05orgId\x12/\n" +
+	"\x0fconfirmation_id\x18\x02 \x01(\tB\x06\xbaH\x03\xc8\x01\x01R\x0econfirmationId\x12\x1e\n" +
+	"\x06reason\x18\x03 \x01(\tB\x06\xbaH\x03\xc8\x01\x01R\x06reason\"N\n" +
+	"!CancelOrganizationDeletionRequest\x12)\n" +
+	"\foperation_id\x18\x01 \x01(\tB\x06\xbaH\x03\xc8\x01\x01R\voperationId\"A\n" +
+	"\x14RetryDeletionRequest\x12)\n" +
+	"\foperation_id\x18\x01 \x01(\tB\x06\xbaH\x03\xc8\x01\x01R\voperationId\"h\n" +
+	"\x1eRequestProjectDeletionResponse\x12F\n" +
+	"\toperation\x18\x01 \x01(\v2(.dashboard.instance.v1.DeletionOperationR\toperation\"m\n" +
+	"#RequestOrganizationDeletionResponse\x12F\n" +
+	"\toperation\x18\x01 \x01(\v2(.dashboard.instance.v1.DeletionOperationR\toperation\"l\n" +
+	"\"CancelOrganizationDeletionResponse\x12F\n" +
+	"\toperation\x18\x01 \x01(\v2(.dashboard.instance.v1.DeletionOperationR\toperation\"_\n" +
+	"\x15RetryDeletionResponse\x12F\n" +
+	"\toperation\x18\x01 \x01(\v2(.dashboard.instance.v1.DeletionOperationR\toperation\"i\n" +
+	"\x14ListDeletionsRequest\x12\x15\n" +
+	"\x06org_id\x18\x01 \x01(\tR\x05orgId\x12\x1d\n" +
+	"\n" +
+	"page_token\x18\x02 \x01(\tR\tpageToken\x12\x1b\n" +
+	"\tpage_size\x18\x03 \x01(\rR\bpageSize\"\x89\x01\n" +
+	"\x15ListDeletionsResponse\x12H\n" +
+	"\n" +
+	"operations\x18\x01 \x03(\v2(.dashboard.instance.v1.DeletionOperationR\n" +
+	"operations\x12&\n" +
+	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken*b\n" +
 	"\rBooleanFilter\x12\x1e\n" +
 	"\x1aBOOLEAN_FILTER_UNSPECIFIED\x10\x00\x12\x17\n" +
 	"\x13BOOLEAN_FILTER_TRUE\x10\x01\x12\x18\n" +
-	"\x14BOOLEAN_FILTER_FALSE\x10\x022\x8d\v\n" +
+	"\x14BOOLEAN_FILTER_FALSE\x10\x022\xa2\x10\n" +
 	"\x14InstanceAdminService\x12`\n" +
 	"\tListUsers\x12'.dashboard.instance.v1.ListUsersRequest\x1a(.dashboard.instance.v1.ListUsersResponse\"\x00\x12r\n" +
 	"\x0fSetUserDisabled\x12-.dashboard.instance.v1.SetUserDisabledRequest\x1a..dashboard.instance.v1.SetUserDisabledResponse\"\x00\x12{\n" +
@@ -1858,7 +2648,12 @@ const file_dashboard_instance_v1_instance_proto_rawDesc = "" +
 	"\x10ResendInvitation\x12..dashboard.instance.v1.ResendInvitationRequest\x1a/.dashboard.instance.v1.ResendInvitationResponse\"\x00\x12u\n" +
 	"\x10RevokeInvitation\x12..dashboard.instance.v1.RevokeInvitationRequest\x1a/.dashboard.instance.v1.RevokeInvitationResponse\"\x00\x12l\n" +
 	"\rSetMemberRole\x12+.dashboard.instance.v1.SetMemberRoleRequest\x1a,.dashboard.instance.v1.SetMemberRoleResponse\"\x00\x12i\n" +
-	"\fRemoveMember\x12*.dashboard.instance.v1.RemoveMemberRequest\x1a+.dashboard.instance.v1.RemoveMemberResponse\"\x00BKZIgithub.com/pug-sh/pug/internal/gen/proto/dashboard/instance/v1;instancev1b\beditionsp\xe8\a"
+	"\fRemoveMember\x12*.dashboard.instance.v1.RemoveMemberRequest\x1a+.dashboard.instance.v1.RemoveMemberResponse\"\x00\x12\x87\x01\n" +
+	"\x16RequestProjectDeletion\x124.dashboard.instance.v1.RequestProjectDeletionRequest\x1a5.dashboard.instance.v1.RequestProjectDeletionResponse\"\x00\x12\x96\x01\n" +
+	"\x1bRequestOrganizationDeletion\x129.dashboard.instance.v1.RequestOrganizationDeletionRequest\x1a:.dashboard.instance.v1.RequestOrganizationDeletionResponse\"\x00\x12\x93\x01\n" +
+	"\x1aCancelOrganizationDeletion\x128.dashboard.instance.v1.CancelOrganizationDeletionRequest\x1a9.dashboard.instance.v1.CancelOrganizationDeletionResponse\"\x00\x12l\n" +
+	"\rRetryDeletion\x12+.dashboard.instance.v1.RetryDeletionRequest\x1a,.dashboard.instance.v1.RetryDeletionResponse\"\x00\x12l\n" +
+	"\rListDeletions\x12+.dashboard.instance.v1.ListDeletionsRequest\x1a,.dashboard.instance.v1.ListDeletionsResponse\"\x00BKZIgithub.com/pug-sh/pug/internal/gen/proto/dashboard/instance/v1;instancev1b\beditionsp\xe8\a"
 
 var (
 	file_dashboard_instance_v1_instance_proto_rawDescOnce sync.Once
@@ -1873,44 +2668,56 @@ func file_dashboard_instance_v1_instance_proto_rawDescGZIP() []byte {
 }
 
 var file_dashboard_instance_v1_instance_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_dashboard_instance_v1_instance_proto_msgTypes = make([]protoimpl.MessageInfo, 29)
+var file_dashboard_instance_v1_instance_proto_msgTypes = make([]protoimpl.MessageInfo, 41)
 var file_dashboard_instance_v1_instance_proto_goTypes = []any{
-	(BooleanFilter)(0),                    // 0: dashboard.instance.v1.BooleanFilter
-	(*User)(nil),                          // 1: dashboard.instance.v1.User
-	(*Membership)(nil),                    // 2: dashboard.instance.v1.Membership
-	(*Organization)(nil),                  // 3: dashboard.instance.v1.Organization
-	(*Project)(nil),                       // 4: dashboard.instance.v1.Project
-	(*Invitation)(nil),                    // 5: dashboard.instance.v1.Invitation
-	(*ListUsersRequest)(nil),              // 6: dashboard.instance.v1.ListUsersRequest
-	(*ListUsersResponse)(nil),             // 7: dashboard.instance.v1.ListUsersResponse
-	(*SetUserDisabledRequest)(nil),        // 8: dashboard.instance.v1.SetUserDisabledRequest
-	(*SetUserDisabledResponse)(nil),       // 9: dashboard.instance.v1.SetUserDisabledResponse
-	(*RevokeUserSessionsRequest)(nil),     // 10: dashboard.instance.v1.RevokeUserSessionsRequest
-	(*RevokeUserSessionsResponse)(nil),    // 11: dashboard.instance.v1.RevokeUserSessionsResponse
-	(*ListOrganizationsRequest)(nil),      // 12: dashboard.instance.v1.ListOrganizationsRequest
-	(*ListOrganizationsResponse)(nil),     // 13: dashboard.instance.v1.ListOrganizationsResponse
-	(*GetOrganizationRequest)(nil),        // 14: dashboard.instance.v1.GetOrganizationRequest
-	(*GetOrganizationResponse)(nil),       // 15: dashboard.instance.v1.GetOrganizationResponse
-	(*ProvisionOrganizationRequest)(nil),  // 16: dashboard.instance.v1.ProvisionOrganizationRequest
-	(*ProvisionOrganizationResponse)(nil), // 17: dashboard.instance.v1.ProvisionOrganizationResponse
-	(*RenameOrganizationRequest)(nil),     // 18: dashboard.instance.v1.RenameOrganizationRequest
-	(*RenameOrganizationResponse)(nil),    // 19: dashboard.instance.v1.RenameOrganizationResponse
-	(*InviteMemberRequest)(nil),           // 20: dashboard.instance.v1.InviteMemberRequest
-	(*InviteMemberResponse)(nil),          // 21: dashboard.instance.v1.InviteMemberResponse
-	(*ResendInvitationRequest)(nil),       // 22: dashboard.instance.v1.ResendInvitationRequest
-	(*ResendInvitationResponse)(nil),      // 23: dashboard.instance.v1.ResendInvitationResponse
-	(*RevokeInvitationRequest)(nil),       // 24: dashboard.instance.v1.RevokeInvitationRequest
-	(*RevokeInvitationResponse)(nil),      // 25: dashboard.instance.v1.RevokeInvitationResponse
-	(*SetMemberRoleRequest)(nil),          // 26: dashboard.instance.v1.SetMemberRoleRequest
-	(*SetMemberRoleResponse)(nil),         // 27: dashboard.instance.v1.SetMemberRoleResponse
-	(*RemoveMemberRequest)(nil),           // 28: dashboard.instance.v1.RemoveMemberRequest
-	(*RemoveMemberResponse)(nil),          // 29: dashboard.instance.v1.RemoveMemberResponse
-	(v1.OrgRole)(0),                       // 30: dashboard.orgs.v1.OrgRole
+	(BooleanFilter)(0),                          // 0: dashboard.instance.v1.BooleanFilter
+	(*User)(nil),                                // 1: dashboard.instance.v1.User
+	(*Membership)(nil),                          // 2: dashboard.instance.v1.Membership
+	(*Organization)(nil),                        // 3: dashboard.instance.v1.Organization
+	(*Project)(nil),                             // 4: dashboard.instance.v1.Project
+	(*Invitation)(nil),                          // 5: dashboard.instance.v1.Invitation
+	(*ListUsersRequest)(nil),                    // 6: dashboard.instance.v1.ListUsersRequest
+	(*ListUsersResponse)(nil),                   // 7: dashboard.instance.v1.ListUsersResponse
+	(*SetUserDisabledRequest)(nil),              // 8: dashboard.instance.v1.SetUserDisabledRequest
+	(*SetUserDisabledResponse)(nil),             // 9: dashboard.instance.v1.SetUserDisabledResponse
+	(*RevokeUserSessionsRequest)(nil),           // 10: dashboard.instance.v1.RevokeUserSessionsRequest
+	(*RevokeUserSessionsResponse)(nil),          // 11: dashboard.instance.v1.RevokeUserSessionsResponse
+	(*ListOrganizationsRequest)(nil),            // 12: dashboard.instance.v1.ListOrganizationsRequest
+	(*ListOrganizationsResponse)(nil),           // 13: dashboard.instance.v1.ListOrganizationsResponse
+	(*GetOrganizationRequest)(nil),              // 14: dashboard.instance.v1.GetOrganizationRequest
+	(*GetOrganizationResponse)(nil),             // 15: dashboard.instance.v1.GetOrganizationResponse
+	(*ProvisionOrganizationRequest)(nil),        // 16: dashboard.instance.v1.ProvisionOrganizationRequest
+	(*ProvisionOrganizationResponse)(nil),       // 17: dashboard.instance.v1.ProvisionOrganizationResponse
+	(*RenameOrganizationRequest)(nil),           // 18: dashboard.instance.v1.RenameOrganizationRequest
+	(*RenameOrganizationResponse)(nil),          // 19: dashboard.instance.v1.RenameOrganizationResponse
+	(*InviteMemberRequest)(nil),                 // 20: dashboard.instance.v1.InviteMemberRequest
+	(*InviteMemberResponse)(nil),                // 21: dashboard.instance.v1.InviteMemberResponse
+	(*ResendInvitationRequest)(nil),             // 22: dashboard.instance.v1.ResendInvitationRequest
+	(*ResendInvitationResponse)(nil),            // 23: dashboard.instance.v1.ResendInvitationResponse
+	(*RevokeInvitationRequest)(nil),             // 24: dashboard.instance.v1.RevokeInvitationRequest
+	(*RevokeInvitationResponse)(nil),            // 25: dashboard.instance.v1.RevokeInvitationResponse
+	(*SetMemberRoleRequest)(nil),                // 26: dashboard.instance.v1.SetMemberRoleRequest
+	(*SetMemberRoleResponse)(nil),               // 27: dashboard.instance.v1.SetMemberRoleResponse
+	(*RemoveMemberRequest)(nil),                 // 28: dashboard.instance.v1.RemoveMemberRequest
+	(*RemoveMemberResponse)(nil),                // 29: dashboard.instance.v1.RemoveMemberResponse
+	(*DeletionOperation)(nil),                   // 30: dashboard.instance.v1.DeletionOperation
+	(*DeletionProjectStep)(nil),                 // 31: dashboard.instance.v1.DeletionProjectStep
+	(*RequestProjectDeletionRequest)(nil),       // 32: dashboard.instance.v1.RequestProjectDeletionRequest
+	(*RequestOrganizationDeletionRequest)(nil),  // 33: dashboard.instance.v1.RequestOrganizationDeletionRequest
+	(*CancelOrganizationDeletionRequest)(nil),   // 34: dashboard.instance.v1.CancelOrganizationDeletionRequest
+	(*RetryDeletionRequest)(nil),                // 35: dashboard.instance.v1.RetryDeletionRequest
+	(*RequestProjectDeletionResponse)(nil),      // 36: dashboard.instance.v1.RequestProjectDeletionResponse
+	(*RequestOrganizationDeletionResponse)(nil), // 37: dashboard.instance.v1.RequestOrganizationDeletionResponse
+	(*CancelOrganizationDeletionResponse)(nil),  // 38: dashboard.instance.v1.CancelOrganizationDeletionResponse
+	(*RetryDeletionResponse)(nil),               // 39: dashboard.instance.v1.RetryDeletionResponse
+	(*ListDeletionsRequest)(nil),                // 40: dashboard.instance.v1.ListDeletionsRequest
+	(*ListDeletionsResponse)(nil),               // 41: dashboard.instance.v1.ListDeletionsResponse
+	(v1.OrgRole)(0),                             // 42: dashboard.orgs.v1.OrgRole
 }
 var file_dashboard_instance_v1_instance_proto_depIdxs = []int32{
 	2,  // 0: dashboard.instance.v1.User.memberships:type_name -> dashboard.instance.v1.Membership
-	30, // 1: dashboard.instance.v1.Membership.role:type_name -> dashboard.orgs.v1.OrgRole
-	30, // 2: dashboard.instance.v1.Invitation.role:type_name -> dashboard.orgs.v1.OrgRole
+	42, // 1: dashboard.instance.v1.Membership.role:type_name -> dashboard.orgs.v1.OrgRole
+	42, // 2: dashboard.instance.v1.Invitation.role:type_name -> dashboard.orgs.v1.OrgRole
 	0,  // 3: dashboard.instance.v1.ListUsersRequest.verified:type_name -> dashboard.instance.v1.BooleanFilter
 	0,  // 4: dashboard.instance.v1.ListUsersRequest.enabled:type_name -> dashboard.instance.v1.BooleanFilter
 	1,  // 5: dashboard.instance.v1.ListUsersResponse.users:type_name -> dashboard.instance.v1.User
@@ -1922,39 +2729,55 @@ var file_dashboard_instance_v1_instance_proto_depIdxs = []int32{
 	5,  // 11: dashboard.instance.v1.GetOrganizationResponse.invitations:type_name -> dashboard.instance.v1.Invitation
 	3,  // 12: dashboard.instance.v1.ProvisionOrganizationResponse.organization:type_name -> dashboard.instance.v1.Organization
 	3,  // 13: dashboard.instance.v1.RenameOrganizationResponse.organization:type_name -> dashboard.instance.v1.Organization
-	30, // 14: dashboard.instance.v1.InviteMemberRequest.role:type_name -> dashboard.orgs.v1.OrgRole
+	42, // 14: dashboard.instance.v1.InviteMemberRequest.role:type_name -> dashboard.orgs.v1.OrgRole
 	5,  // 15: dashboard.instance.v1.InviteMemberResponse.invitation:type_name -> dashboard.instance.v1.Invitation
 	5,  // 16: dashboard.instance.v1.ResendInvitationResponse.invitation:type_name -> dashboard.instance.v1.Invitation
-	30, // 17: dashboard.instance.v1.SetMemberRoleRequest.role:type_name -> dashboard.orgs.v1.OrgRole
-	6,  // 18: dashboard.instance.v1.InstanceAdminService.ListUsers:input_type -> dashboard.instance.v1.ListUsersRequest
-	8,  // 19: dashboard.instance.v1.InstanceAdminService.SetUserDisabled:input_type -> dashboard.instance.v1.SetUserDisabledRequest
-	10, // 20: dashboard.instance.v1.InstanceAdminService.RevokeUserSessions:input_type -> dashboard.instance.v1.RevokeUserSessionsRequest
-	12, // 21: dashboard.instance.v1.InstanceAdminService.ListOrganizations:input_type -> dashboard.instance.v1.ListOrganizationsRequest
-	14, // 22: dashboard.instance.v1.InstanceAdminService.GetOrganization:input_type -> dashboard.instance.v1.GetOrganizationRequest
-	16, // 23: dashboard.instance.v1.InstanceAdminService.ProvisionOrganization:input_type -> dashboard.instance.v1.ProvisionOrganizationRequest
-	18, // 24: dashboard.instance.v1.InstanceAdminService.RenameOrganization:input_type -> dashboard.instance.v1.RenameOrganizationRequest
-	20, // 25: dashboard.instance.v1.InstanceAdminService.InviteMember:input_type -> dashboard.instance.v1.InviteMemberRequest
-	22, // 26: dashboard.instance.v1.InstanceAdminService.ResendInvitation:input_type -> dashboard.instance.v1.ResendInvitationRequest
-	24, // 27: dashboard.instance.v1.InstanceAdminService.RevokeInvitation:input_type -> dashboard.instance.v1.RevokeInvitationRequest
-	26, // 28: dashboard.instance.v1.InstanceAdminService.SetMemberRole:input_type -> dashboard.instance.v1.SetMemberRoleRequest
-	28, // 29: dashboard.instance.v1.InstanceAdminService.RemoveMember:input_type -> dashboard.instance.v1.RemoveMemberRequest
-	7,  // 30: dashboard.instance.v1.InstanceAdminService.ListUsers:output_type -> dashboard.instance.v1.ListUsersResponse
-	9,  // 31: dashboard.instance.v1.InstanceAdminService.SetUserDisabled:output_type -> dashboard.instance.v1.SetUserDisabledResponse
-	11, // 32: dashboard.instance.v1.InstanceAdminService.RevokeUserSessions:output_type -> dashboard.instance.v1.RevokeUserSessionsResponse
-	13, // 33: dashboard.instance.v1.InstanceAdminService.ListOrganizations:output_type -> dashboard.instance.v1.ListOrganizationsResponse
-	15, // 34: dashboard.instance.v1.InstanceAdminService.GetOrganization:output_type -> dashboard.instance.v1.GetOrganizationResponse
-	17, // 35: dashboard.instance.v1.InstanceAdminService.ProvisionOrganization:output_type -> dashboard.instance.v1.ProvisionOrganizationResponse
-	19, // 36: dashboard.instance.v1.InstanceAdminService.RenameOrganization:output_type -> dashboard.instance.v1.RenameOrganizationResponse
-	21, // 37: dashboard.instance.v1.InstanceAdminService.InviteMember:output_type -> dashboard.instance.v1.InviteMemberResponse
-	23, // 38: dashboard.instance.v1.InstanceAdminService.ResendInvitation:output_type -> dashboard.instance.v1.ResendInvitationResponse
-	25, // 39: dashboard.instance.v1.InstanceAdminService.RevokeInvitation:output_type -> dashboard.instance.v1.RevokeInvitationResponse
-	27, // 40: dashboard.instance.v1.InstanceAdminService.SetMemberRole:output_type -> dashboard.instance.v1.SetMemberRoleResponse
-	29, // 41: dashboard.instance.v1.InstanceAdminService.RemoveMember:output_type -> dashboard.instance.v1.RemoveMemberResponse
-	30, // [30:42] is the sub-list for method output_type
-	18, // [18:30] is the sub-list for method input_type
-	18, // [18:18] is the sub-list for extension type_name
-	18, // [18:18] is the sub-list for extension extendee
-	0,  // [0:18] is the sub-list for field type_name
+	42, // 17: dashboard.instance.v1.SetMemberRoleRequest.role:type_name -> dashboard.orgs.v1.OrgRole
+	31, // 18: dashboard.instance.v1.DeletionOperation.projects:type_name -> dashboard.instance.v1.DeletionProjectStep
+	30, // 19: dashboard.instance.v1.RequestProjectDeletionResponse.operation:type_name -> dashboard.instance.v1.DeletionOperation
+	30, // 20: dashboard.instance.v1.RequestOrganizationDeletionResponse.operation:type_name -> dashboard.instance.v1.DeletionOperation
+	30, // 21: dashboard.instance.v1.CancelOrganizationDeletionResponse.operation:type_name -> dashboard.instance.v1.DeletionOperation
+	30, // 22: dashboard.instance.v1.RetryDeletionResponse.operation:type_name -> dashboard.instance.v1.DeletionOperation
+	30, // 23: dashboard.instance.v1.ListDeletionsResponse.operations:type_name -> dashboard.instance.v1.DeletionOperation
+	6,  // 24: dashboard.instance.v1.InstanceAdminService.ListUsers:input_type -> dashboard.instance.v1.ListUsersRequest
+	8,  // 25: dashboard.instance.v1.InstanceAdminService.SetUserDisabled:input_type -> dashboard.instance.v1.SetUserDisabledRequest
+	10, // 26: dashboard.instance.v1.InstanceAdminService.RevokeUserSessions:input_type -> dashboard.instance.v1.RevokeUserSessionsRequest
+	12, // 27: dashboard.instance.v1.InstanceAdminService.ListOrganizations:input_type -> dashboard.instance.v1.ListOrganizationsRequest
+	14, // 28: dashboard.instance.v1.InstanceAdminService.GetOrganization:input_type -> dashboard.instance.v1.GetOrganizationRequest
+	16, // 29: dashboard.instance.v1.InstanceAdminService.ProvisionOrganization:input_type -> dashboard.instance.v1.ProvisionOrganizationRequest
+	18, // 30: dashboard.instance.v1.InstanceAdminService.RenameOrganization:input_type -> dashboard.instance.v1.RenameOrganizationRequest
+	20, // 31: dashboard.instance.v1.InstanceAdminService.InviteMember:input_type -> dashboard.instance.v1.InviteMemberRequest
+	22, // 32: dashboard.instance.v1.InstanceAdminService.ResendInvitation:input_type -> dashboard.instance.v1.ResendInvitationRequest
+	24, // 33: dashboard.instance.v1.InstanceAdminService.RevokeInvitation:input_type -> dashboard.instance.v1.RevokeInvitationRequest
+	26, // 34: dashboard.instance.v1.InstanceAdminService.SetMemberRole:input_type -> dashboard.instance.v1.SetMemberRoleRequest
+	28, // 35: dashboard.instance.v1.InstanceAdminService.RemoveMember:input_type -> dashboard.instance.v1.RemoveMemberRequest
+	32, // 36: dashboard.instance.v1.InstanceAdminService.RequestProjectDeletion:input_type -> dashboard.instance.v1.RequestProjectDeletionRequest
+	33, // 37: dashboard.instance.v1.InstanceAdminService.RequestOrganizationDeletion:input_type -> dashboard.instance.v1.RequestOrganizationDeletionRequest
+	34, // 38: dashboard.instance.v1.InstanceAdminService.CancelOrganizationDeletion:input_type -> dashboard.instance.v1.CancelOrganizationDeletionRequest
+	35, // 39: dashboard.instance.v1.InstanceAdminService.RetryDeletion:input_type -> dashboard.instance.v1.RetryDeletionRequest
+	40, // 40: dashboard.instance.v1.InstanceAdminService.ListDeletions:input_type -> dashboard.instance.v1.ListDeletionsRequest
+	7,  // 41: dashboard.instance.v1.InstanceAdminService.ListUsers:output_type -> dashboard.instance.v1.ListUsersResponse
+	9,  // 42: dashboard.instance.v1.InstanceAdminService.SetUserDisabled:output_type -> dashboard.instance.v1.SetUserDisabledResponse
+	11, // 43: dashboard.instance.v1.InstanceAdminService.RevokeUserSessions:output_type -> dashboard.instance.v1.RevokeUserSessionsResponse
+	13, // 44: dashboard.instance.v1.InstanceAdminService.ListOrganizations:output_type -> dashboard.instance.v1.ListOrganizationsResponse
+	15, // 45: dashboard.instance.v1.InstanceAdminService.GetOrganization:output_type -> dashboard.instance.v1.GetOrganizationResponse
+	17, // 46: dashboard.instance.v1.InstanceAdminService.ProvisionOrganization:output_type -> dashboard.instance.v1.ProvisionOrganizationResponse
+	19, // 47: dashboard.instance.v1.InstanceAdminService.RenameOrganization:output_type -> dashboard.instance.v1.RenameOrganizationResponse
+	21, // 48: dashboard.instance.v1.InstanceAdminService.InviteMember:output_type -> dashboard.instance.v1.InviteMemberResponse
+	23, // 49: dashboard.instance.v1.InstanceAdminService.ResendInvitation:output_type -> dashboard.instance.v1.ResendInvitationResponse
+	25, // 50: dashboard.instance.v1.InstanceAdminService.RevokeInvitation:output_type -> dashboard.instance.v1.RevokeInvitationResponse
+	27, // 51: dashboard.instance.v1.InstanceAdminService.SetMemberRole:output_type -> dashboard.instance.v1.SetMemberRoleResponse
+	29, // 52: dashboard.instance.v1.InstanceAdminService.RemoveMember:output_type -> dashboard.instance.v1.RemoveMemberResponse
+	36, // 53: dashboard.instance.v1.InstanceAdminService.RequestProjectDeletion:output_type -> dashboard.instance.v1.RequestProjectDeletionResponse
+	37, // 54: dashboard.instance.v1.InstanceAdminService.RequestOrganizationDeletion:output_type -> dashboard.instance.v1.RequestOrganizationDeletionResponse
+	38, // 55: dashboard.instance.v1.InstanceAdminService.CancelOrganizationDeletion:output_type -> dashboard.instance.v1.CancelOrganizationDeletionResponse
+	39, // 56: dashboard.instance.v1.InstanceAdminService.RetryDeletion:output_type -> dashboard.instance.v1.RetryDeletionResponse
+	41, // 57: dashboard.instance.v1.InstanceAdminService.ListDeletions:output_type -> dashboard.instance.v1.ListDeletionsResponse
+	41, // [41:58] is the sub-list for method output_type
+	24, // [24:41] is the sub-list for method input_type
+	24, // [24:24] is the sub-list for extension type_name
+	24, // [24:24] is the sub-list for extension extendee
+	0,  // [0:24] is the sub-list for field type_name
 }
 
 func init() { file_dashboard_instance_v1_instance_proto_init() }
@@ -1968,7 +2791,7 @@ func file_dashboard_instance_v1_instance_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_dashboard_instance_v1_instance_proto_rawDesc), len(file_dashboard_instance_v1_instance_proto_rawDesc)),
 			NumEnums:      1,
-			NumMessages:   29,
+			NumMessages:   41,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

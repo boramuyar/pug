@@ -8,6 +8,7 @@ import (
 	"connectrpc.com/connect"
 	"github.com/pug-sh/pug/internal/app/server/rpc"
 	"github.com/pug-sh/pug/internal/apperr"
+	"github.com/pug-sh/pug/internal/core/deletion"
 	"github.com/pug-sh/pug/internal/core/instanceadmin"
 	coreorgs "github.com/pug-sh/pug/internal/core/orgs"
 	instancev1 "github.com/pug-sh/pug/internal/gen/proto/dashboard/instance/v1"
@@ -16,10 +17,13 @@ import (
 )
 
 type server struct {
-	service *instanceadmin.Service
+	service   *instanceadmin.Service
+	deletions *deletion.Service
 }
 
-func NewServer(service *instanceadmin.Service) *server { return &server{service: service} }
+func NewServer(service *instanceadmin.Service, deletions *deletion.Service) *server {
+	return &server{service: service, deletions: deletions}
+}
 
 func actor(ctx context.Context) (string, error) {
 	p, err := rpc.MustGetPrincipalWithCustomer(ctx)
@@ -32,6 +36,9 @@ func actor(ctx context.Context) (string, error) {
 func internal(err error) error {
 	if errors.Is(err, instanceadmin.ErrNotFound) {
 		return apperr.NotFound(apperr.ReasonInstanceResourceNotFound, "resource not found")
+	}
+	if errors.Is(err, instanceadmin.ErrOrgInactive) {
+		return apperr.FailedPrecondition(apperr.ReasonDeletionBlocked, "organization is pending deletion")
 	}
 	if errors.Is(err, coreorgs.ErrOrgNotFound) {
 		return apperr.NotFound(apperr.ReasonOrgNotFound, "organization not found")
@@ -82,7 +89,7 @@ func toUser(user instanceadmin.User) *instancev1.User {
 }
 
 func toOrganization(o instanceadmin.Organization) *instancev1.Organization {
-	return &instancev1.Organization{Id: proto.String(o.ID), Name: proto.String(o.Name), CreatedAt: proto.String(o.CreatedAt.Format(time.RFC3339)), MemberCount: proto.Uint32(uint32(o.MemberCount)), ProjectCount: proto.Uint32(uint32(o.ProjectCount)), AdminEmails: o.AdminEmails, NeedsAdmin: proto.Bool(o.NeedsAdmin)}
+	return &instancev1.Organization{Id: proto.String(o.ID), Name: proto.String(o.Name), CreatedAt: proto.String(o.CreatedAt.Format(time.RFC3339)), MemberCount: proto.Uint32(uint32(o.MemberCount)), ProjectCount: proto.Uint32(uint32(o.ProjectCount)), AdminEmails: o.AdminEmails, NeedsAdmin: proto.Bool(o.NeedsAdmin), DeletionState: proto.String(o.DeletionState)}
 }
 
 func toInvitation(id, email string, expires time.Time, invitationRole string) *instancev1.Invitation {
@@ -171,7 +178,7 @@ func (s *server) GetOrganization(ctx context.Context, req *connect.Request[insta
 	}
 	result := &instancev1.GetOrganizationResponse{Organization: toOrganization(detail.Organization), NextProjectPageToken: proto.String(detail.NextProjectPageToken), NextMemberPageToken: proto.String(detail.NextMemberPageToken), NextInvitationPageToken: proto.String(detail.NextInvitationPageToken)}
 	for _, p := range detail.Projects {
-		result.Projects = append(result.Projects, &instancev1.Project{Id: proto.String(p.ID), Name: proto.String(p.Name), CreatedAt: proto.String(p.CreatedAt.Format(time.RFC3339)), ReportingTimezone: proto.String(p.ReportingTimezone)})
+		result.Projects = append(result.Projects, &instancev1.Project{Id: proto.String(p.ID), Name: proto.String(p.Name), CreatedAt: proto.String(p.CreatedAt.Format(time.RFC3339)), ReportingTimezone: proto.String(p.ReportingTimezone), DeletionState: proto.String(p.DeletionState)})
 	}
 	for _, u := range detail.Members {
 		result.Members = append(result.Members, toUser(u))
@@ -301,4 +308,88 @@ func (s *server) RemoveMember(ctx context.Context, req *connect.Request[instance
 		return nil, internal(err)
 	}
 	return connect.NewResponse(&instancev1.RemoveMemberResponse{}), nil
+}
+
+func deletionError(err error) error {
+	switch {
+	case errors.Is(err, deletion.ErrNotFound):
+		return apperr.NotFound(apperr.ReasonInstanceResourceNotFound, err.Error())
+	case errors.Is(err, deletion.ErrNameMismatch), errors.Is(err, deletion.ErrReasonRequired):
+		return apperr.Invalid(apperr.ReasonDeletionConfirmationMismatch, err.Error())
+	case errors.Is(err, deletion.ErrAlreadyRequested), errors.Is(err, deletion.ErrComplianceActive), errors.Is(err, deletion.ErrBillingActive), errors.Is(err, deletion.ErrCannotCancel), errors.Is(err, deletion.ErrCannotRetry):
+		return apperr.FailedPrecondition(apperr.ReasonDeletionBlocked, err.Error())
+	default:
+		return connect.NewError(connect.CodeInternal, errors.New("internal error"))
+	}
+}
+
+func toDeletion(o deletion.Operation) *instancev1.DeletionOperation {
+	r := &instancev1.DeletionOperation{Id: proto.String(o.ID), TargetType: proto.String(o.TargetType), TargetId: proto.String(o.TargetID), TargetName: proto.String(o.TargetName), OrgId: proto.String(o.OrgID), Status: proto.String(o.Status), RequestedAt: proto.String(o.Requested.Format(time.RFC3339)), PurgeAfter: proto.String(o.PurgeAfter.Format(time.RFC3339)), LastError: proto.String(o.LastError), ActorId: proto.String(o.ActorID), ActorEmail: proto.String(o.ActorEmail), Reason: proto.String(o.Reason)}
+	if o.Finished != nil {
+		r.FinishedAt = proto.String(o.Finished.Format(time.RFC3339))
+	}
+	for _, p := range o.Projects {
+		r.Projects = append(r.Projects, &instancev1.DeletionProjectStep{ProjectId: proto.String(p.ProjectID), ProjectName: proto.String(p.ProjectName), ClickhouseDone: proto.Bool(p.ClickHouseDone != nil), PostgresDone: proto.Bool(p.PostgresDone != nil)})
+	}
+	return r
+}
+
+func (s *server) RequestProjectDeletion(ctx context.Context, req *connect.Request[instancev1.RequestProjectDeletionRequest]) (*connect.Response[instancev1.RequestProjectDeletionResponse], error) {
+	id, err := actor(ctx)
+	if err != nil {
+		return nil, err
+	}
+	o, err := s.deletions.RequestProject(ctx, id, req.Msg.GetOrgId(), req.Msg.GetProjectId(), req.Msg.GetConfirmationName())
+	if err != nil {
+		return nil, deletionError(err)
+	}
+	return connect.NewResponse(&instancev1.RequestProjectDeletionResponse{Operation: toDeletion(o)}), nil
+}
+
+func (s *server) RequestOrganizationDeletion(ctx context.Context, req *connect.Request[instancev1.RequestOrganizationDeletionRequest]) (*connect.Response[instancev1.RequestOrganizationDeletionResponse], error) {
+	id, err := actor(ctx)
+	if err != nil {
+		return nil, err
+	}
+	o, err := s.deletions.RequestOrganization(ctx, id, req.Msg.GetOrgId(), req.Msg.GetConfirmationId(), req.Msg.GetReason())
+	if err != nil {
+		return nil, deletionError(err)
+	}
+	return connect.NewResponse(&instancev1.RequestOrganizationDeletionResponse{Operation: toDeletion(o)}), nil
+}
+
+func (s *server) CancelOrganizationDeletion(ctx context.Context, req *connect.Request[instancev1.CancelOrganizationDeletionRequest]) (*connect.Response[instancev1.CancelOrganizationDeletionResponse], error) {
+	id, err := actor(ctx)
+	if err != nil {
+		return nil, err
+	}
+	o, err := s.deletions.CancelOrganization(ctx, id, req.Msg.GetOperationId())
+	if err != nil {
+		return nil, deletionError(err)
+	}
+	return connect.NewResponse(&instancev1.CancelOrganizationDeletionResponse{Operation: toDeletion(o)}), nil
+}
+
+func (s *server) RetryDeletion(ctx context.Context, req *connect.Request[instancev1.RetryDeletionRequest]) (*connect.Response[instancev1.RetryDeletionResponse], error) {
+	id, err := actor(ctx)
+	if err != nil {
+		return nil, err
+	}
+	o, err := s.deletions.Retry(ctx, id, req.Msg.GetOperationId())
+	if err != nil {
+		return nil, deletionError(err)
+	}
+	return connect.NewResponse(&instancev1.RetryDeletionResponse{Operation: toDeletion(o)}), nil
+}
+
+func (s *server) ListDeletions(ctx context.Context, req *connect.Request[instancev1.ListDeletionsRequest]) (*connect.Response[instancev1.ListDeletionsResponse], error) {
+	rows, next, err := s.deletions.ListPage(ctx, req.Msg.GetOrgId(), int(req.Msg.GetPageSize()), req.Msg.GetPageToken())
+	if err != nil {
+		return nil, deletionError(err)
+	}
+	r := &instancev1.ListDeletionsResponse{NextPageToken: proto.String(next)}
+	for _, o := range rows {
+		r.Operations = append(r.Operations, toDeletion(o))
+	}
+	return connect.NewResponse(r), nil
 }

@@ -19,6 +19,11 @@ service InstanceAdminService {
   rpc RevokeInvitation(RevokeInvitationRequest) returns (RevokeInvitationResponse) {}
   rpc SetMemberRole(SetMemberRoleRequest) returns (SetMemberRoleResponse) {}
   rpc RemoveMember(RemoveMemberRequest) returns (RemoveMemberResponse) {}
+  rpc RequestProjectDeletion(RequestProjectDeletionRequest) returns (RequestProjectDeletionResponse) {}
+  rpc RequestOrganizationDeletion(RequestOrganizationDeletionRequest) returns (RequestOrganizationDeletionResponse) {}
+  rpc CancelOrganizationDeletion(CancelOrganizationDeletionRequest) returns (CancelOrganizationDeletionResponse) {}
+  rpc RetryDeletion(RetryDeletionRequest) returns (RetryDeletionResponse) {}
+  rpc ListDeletions(ListDeletionsRequest) returns (ListDeletionsResponse) {}
 }
 
 message User {
@@ -44,6 +49,7 @@ message Organization {
   uint32 project_count = 5;
   repeated string admin_emails = 6;
   bool needs_admin = 7;
+  string deletion_state = 8;
 }
 
 message Project {
@@ -51,6 +57,7 @@ message Project {
   string name = 2;
   string created_at = 3;
   string reporting_timezone = 4;
+  string deletion_state = 5;
 }
 
 message Invitation {
@@ -154,3 +161,52 @@ message RemoveMemberRequest {
   string user_id = 2 [(buf.validate.field).required = true];
 }
 message RemoveMemberResponse {}
+
+message DeletionOperation {
+  string id = 1;
+  string target_type = 2;
+  string target_id = 3;
+  string target_name = 4;
+  string org_id = 5;
+  string status = 6;
+  string requested_at = 7;
+  string purge_after = 8;
+  string finished_at = 9;
+  string last_error = 10;
+  repeated DeletionProjectStep projects = 11;
+  string actor_id = 12;
+  string reason = 13;
+  string actor_email = 14;
+}
+message DeletionProjectStep {
+  string project_id = 1;
+  string project_name = 2;
+  bool clickhouse_done = 3;
+  bool postgres_done = 4;
+}
+message RequestProjectDeletionRequest {
+  string org_id = 1 [(buf.validate.field).required = true];
+  string project_id = 2 [(buf.validate.field).required = true];
+  string confirmation_name = 3 [(buf.validate.field).required = true];
+}
+message RequestOrganizationDeletionRequest {
+  string org_id = 1 [(buf.validate.field).required = true];
+  string confirmation_id = 2 [(buf.validate.field).required = true];
+  string reason = 3 [(buf.validate.field).required = true];
+}
+message CancelOrganizationDeletionRequest { string operation_id = 1 [(buf.validate.field).required = true]; }
+message RetryDeletionRequest { string operation_id = 1 [(buf.validate.field).required = true]; }
+message RequestProjectDeletionResponse { DeletionOperation operation = 1; }
+message RequestOrganizationDeletionResponse { DeletionOperation operation = 1; }
+message CancelOrganizationDeletionResponse { DeletionOperation operation = 1; }
+message RetryDeletionResponse { DeletionOperation operation = 1; }
+message ListDeletionsRequest {
+  // Empty org_id lists deletion history across the instance.
+  string org_id = 1;
+  string page_token = 2;
+  uint32 page_size = 3;
+}
+message ListDeletionsResponse {
+  repeated DeletionOperation operations = 1;
+  string next_page_token = 2;
+}

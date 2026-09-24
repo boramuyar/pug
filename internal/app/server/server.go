@@ -106,6 +106,7 @@ func start(ctx context.Context, d *deps) error {
 			pogrpc.ErrorInterceptor(),
 			validate.NewInterceptor(validate.WithoutErrorDetails()),
 			pogrpc.PrincipalInterceptor(),
+			pogrpc.OrganizationGateInterceptor(deletionGate),
 			pogrpc.ProjectGateInterceptor(deletionGate),
 			pogrpc.AuthzInterceptor(d.authz, orgsSvc, d.instancePolicy),
 		),
@@ -149,7 +150,7 @@ func start(ctx context.Context, d *deps) error {
 	customersPath, customersHandler := customersv1connect.NewCustomersServiceHandler(
 		customers.NewServerWithPolicy(corecustomers.NewService(d.pgW), d.instancePolicy), handlerOpts)
 	instancePath, instanceHandler := instancev1connect.NewInstanceAdminServiceHandler(
-		instancerpc.NewServer(coreinstanceadmin.NewService(d.pgRo, d.pgW, d.instancePolicy, orgsSvc)), handlerOpts)
+		instancerpc.NewServer(coreinstanceadmin.NewService(d.pgRo, d.pgW, d.instancePolicy, orgsSvc), deletion.NewServiceWithPublisher(d.pgW, authProjectsRepo, d.nats)), handlerOpts)
 
 	// No ClickHouse: the server only reads what `pug cron usage` stored, and
 	// MeterWindow is the one method that needs it.

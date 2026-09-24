@@ -51,8 +51,8 @@ func (q *Queries) CreateProject(ctx context.Context, arg CreateProjectParams) (P
 
 const createProjectAsAdmin = `-- name: CreateProjectAsAdmin :one
 with check_admin as (
-  select 1 from org_members
-  where org_id = $3 and customer_id = $5 and role = 'ORG_ROLE_ADMIN'
+  select 1 from org_members m join orgs o on o.id=m.org_id
+  where m.org_id = $3 and m.customer_id = $5 and m.role = 'ORG_ROLE_ADMIN' and o.deletion_state='active'
 )
 insert into projects (display_name, id, org_id, reporting_timezone)
 select $1, $2, $3, $4

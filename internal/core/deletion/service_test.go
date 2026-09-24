@@ -189,6 +189,147 @@ func TestProjectEnqueueFailureStaysRetryable(t *testing.T) {
 	}
 }
 
+func TestOrganizationEnqueueFailureCanStillBeCancelled(t *testing.T) {
+	if testing.Short() {
+		t.Skip("requires Docker Desktop")
+	}
+	db := testutil.SetupPostgres(t)
+	ctx := context.Background()
+	orgID, projectID, actorID := xid.New().String(), xid.New().String(), xid.New().String()
+	if _, err := db.PgW.Exec(ctx, `insert into orgs(id,display_name) values($1,'Company')`, orgID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.PgW.Exec(ctx, `insert into projects(id,org_id,display_name) values($1,$2,'Web')`, projectID, orgID); err != nil {
+		t.Fatal(err)
+	}
+	publishErr := errors.New("nats unavailable")
+	publisher := &recordingPublisher{err: publishErr}
+	svc := deletion.NewServiceWithPublisher(db.PgW, newRecordingInvalidator(), publisher)
+	if _, err := svc.RequestOrganization(ctx, actorID, orgID, orgID, "retire tenant"); !errors.Is(err, publishErr) {
+		t.Fatalf("request error = %v, want publish error", err)
+	}
+	var operationID string
+	if err := db.PgW.QueryRow(ctx, `select id from deletion_operations where target_type='organization' and target_id=$1`, orgID).Scan(&operationID); err != nil {
+		t.Fatal(err)
+	}
+	cancelled, err := svc.CancelOrganization(ctx, actorID, operationID)
+	if err != nil || cancelled.Status != "cancelled" {
+		t.Fatalf("cancel enqueue failure = %+v, %v", cancelled, err)
+	}
+}
+
+func TestOrganizationCancellationWindow(t *testing.T) {
+	if testing.Short() {
+		t.Skip("requires Docker Desktop")
+	}
+	db := testutil.SetupPostgres(t)
+	ctx := context.Background()
+	orgID, projectID, actorID, memberID := xid.New().String(), xid.New().String(), xid.New().String(), xid.New().String()
+	if _, err := db.PgW.Exec(ctx, `insert into orgs(id,display_name) values($1,'Company')`, orgID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.PgW.Exec(ctx, `insert into customers(id,display_name,email,password_hash,picture_uri) values($1,'Member',$2,'hash','')`, memberID, memberID+"@example.test"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.PgW.Exec(ctx, `insert into org_members(customer_id,org_id,role) values($1,$2,'ORG_ROLE_ADMIN')`, memberID, orgID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.PgW.Exec(ctx, `insert into projects(id,org_id,display_name) values($1,$2,'Web')`, projectID, orgID); err != nil {
+		t.Fatal(err)
+	}
+	const token = "organization-public-key"
+	if _, err := db.PgW.Exec(ctx, `insert into api_keys(id,kind,masked,project_id,token) values($1,'public',$2,$3,$2)`, xid.New().String(), token, projectID); err != nil {
+		t.Fatal(err)
+	}
+	invalidated := newRecordingInvalidator()
+	svc := deletion.NewServiceWithPublisher(db.PgW, invalidated, &recordingPublisher{})
+	if _, err := svc.RequestOrganization(ctx, actorID, orgID, orgID, " "); !errors.Is(err, deletion.ErrReasonRequired) {
+		t.Fatalf("blank reason: %v", err)
+	}
+	op, err := svc.RequestOrganization(ctx, actorID, orgID, orgID, "retire tenant")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if op.Status != "pending_deletion" || len(op.Projects) != 1 || op.PurgeAfter.Before(time.Now().Add(23*time.Hour)) || op.PurgeAfter.After(time.Now().Add(25*time.Hour)) {
+		t.Fatalf("cancellation window: %+v", op)
+	}
+	if tokens := invalidated.blocked[projectID]; len(tokens) != 1 || tokens[0] != token {
+		t.Fatalf("blocked project keys: %v", tokens)
+	}
+	var members int
+	if err := db.PgW.QueryRow(ctx, `select count(*) from org_members where org_id=$1`, orgID).Scan(&members); err != nil || members != 1 {
+		t.Fatalf("members during cancellation window = %d, %v", members, err)
+	}
+	if repeated, err := svc.RequestOrganization(ctx, actorID, orgID, orgID, "retire tenant"); err != nil || repeated.ID != op.ID {
+		t.Fatalf("duplicate organization request: %+v, %v", repeated, err)
+	}
+	if err := deletion.NewGate(db.PgW).WithActiveProject(ctx, projectID, func(context.Context) error { t.Fatal("pending org write admitted"); return nil }); !errors.Is(err, deletion.ErrProjectInactive) {
+		t.Fatalf("gate: %v", err)
+	}
+	unblockErr := errors.New("cache unavailable")
+	invalidated.unblockErr = unblockErr
+	if _, err := svc.CancelOrganization(ctx, actorID, op.ID); !errors.Is(err, unblockErr) {
+		t.Fatalf("cancellation did not fail closed when key unblock failed: %v", err)
+	}
+	var state string
+	if err := db.PgRO.QueryRow(ctx, `select deletion_state from orgs where id=$1`, orgID).Scan(&state); err != nil || state != "pending_deletion" {
+		t.Fatalf("organization state after failed key unblock = %q, %v", state, err)
+	}
+	invalidated.unblockErr = nil
+	cancelled, err := svc.CancelOrganization(ctx, actorID, op.ID)
+	if err != nil || cancelled.Status != "cancelled" {
+		t.Fatalf("cancel: %+v, %v", cancelled, err)
+	}
+	if tokens := invalidated.unblocked[projectID]; len(tokens) != 1 || tokens[0] != token {
+		t.Fatalf("unblocked project keys: %v", tokens)
+	}
+	if err := deletion.NewGate(db.PgW).WithActiveProject(ctx, projectID, func(context.Context) error { return nil }); err != nil {
+		t.Fatalf("restored project access: %v", err)
+	}
+	if err := db.PgW.QueryRow(ctx, `select count(*) from org_members where org_id=$1`, orgID).Scan(&members); err != nil || members != 1 {
+		t.Fatalf("members after cancellation = %d, %v", members, err)
+	}
+	if _, err := svc.CancelOrganization(ctx, actorID, op.ID); !errors.Is(err, deletion.ErrCannotCancel) {
+		t.Fatalf("duplicate cancellation: %v", err)
+	}
+}
+
+func TestOrganizationCancellationDeadlineAfterLockWait(t *testing.T) {
+	if testing.Short() {
+		t.Skip("requires Docker Desktop")
+	}
+	db := testutil.SetupPostgres(t)
+	ctx := context.Background()
+	orgID, actorID := xid.New().String(), xid.New().String()
+	if _, err := db.PgW.Exec(ctx, `insert into orgs(id,display_name) values($1,'Company')`, orgID); err != nil {
+		t.Fatal(err)
+	}
+	svc := deletion.NewServiceWithPublisher(db.PgW, nil, &recordingPublisher{})
+	op, err := svc.RequestOrganization(ctx, actorID, orgID, orgID, "retire tenant")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.PgW.Exec(ctx, `update deletion_operations set purge_after=clock_timestamp()+interval '300 milliseconds' where id=$1`, op.ID); err != nil {
+		t.Fatal(err)
+	}
+	tx, err := db.PgW.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := tx.Exec(ctx, `select id from deletion_operations where id=$1 for update`, op.ID); err != nil {
+		t.Fatal(err)
+	}
+	done := make(chan error, 1)
+	go func() { _, err := svc.CancelOrganization(ctx, actorID, op.ID); done <- err }()
+	time.Sleep(450 * time.Millisecond)
+	if err := tx.Rollback(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if err := <-done; !errors.Is(err, deletion.ErrCannotCancel) {
+		t.Fatalf("cancellation succeeded after deadline while waiting for lock: %v", err)
+	}
+}
+
 func TestDeletionWaitsForInFlightProjectWrite(t *testing.T) {
 	if testing.Short() {
 		t.Skip("requires Docker Desktop")
