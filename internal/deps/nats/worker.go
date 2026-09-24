@@ -35,8 +35,9 @@ type PermanentError struct {
 
 // DeferredError asks the worker to redeliver a valid message after a specific
 // delay. It is for scheduled work whose durable message arrived before its
-// execution deadline; it does not consume the normal retry backoff or route the
-// message to the DLQ as a processing failure.
+// execution deadline. A delayed negative acknowledgment consumes one JetStream
+// delivery attempt, so callers must reserve delivery budget for every expected
+// deferral. The worker dead-letters a deferral when no delivery remains.
 type DeferredError struct {
 	delay time.Duration
 }
@@ -387,6 +388,34 @@ func (w *natsWorker) handleMessage(ctx context.Context, msg jetstream.Msg) {
 	deferred, _ := errors.AsType[*DeferredError](err)
 	switch {
 	case deferred != nil:
+		if w.isLastDelivery(numDelivered, metaOK) {
+			slog.ErrorContext(procCtx, "scheduled message exhausted its delivery budget",
+				slog.String("stream", w.config.StreamName),
+				slog.String("consumer", w.config.ConsumerName),
+				slog.Duration("requested_redelivery_delay", deferred.Delay()),
+				slogx.Error(err)) // puglint:exempt — disposition log; the processor returned the cause
+			disposition := dispositionDeferredExhausted
+			if !metaOK {
+				disposition = dispositionMetadataUnavailable
+			}
+			dlqCtx, dlqCancel := dlqContext(procCtx)
+			published := w.publishToDLQ(dlqCtx, msg, meta, err)
+			dlqCancel()
+			recordDLQOutcome(procCtx, w.config.StreamName, w.config.ConsumerName, disposition, published)
+			if !published {
+				slog.ErrorContext(procCtx, "DLQ publish failed for exhausted scheduled message, terminating to avoid silent message loss",
+					slog.String("stream", w.config.StreamName),
+					slog.String("consumer", w.config.ConsumerName),
+					slog.String("subject", msg.Subject()))
+			}
+			if termErr := msg.Term(); termErr != nil {
+				slog.ErrorContext(procCtx, "failed to terminate exhausted scheduled message",
+					slog.String("stream", w.config.StreamName),
+					slogx.Error(termErr))
+				telemetry.RecordError(procCtx, termErr)
+			}
+			break
+		}
 		slog.InfoContext(procCtx, "deferring scheduled message",
 			slog.String("stream", w.config.StreamName),
 			slog.String("consumer", w.config.ConsumerName),
@@ -504,6 +533,7 @@ const dlqPublishTimeout = 5 * time.Second
 const (
 	dispositionPermanent           = "permanent"            // poison message, never retried
 	dispositionExhausted           = "max_deliver"          // retries exhausted
+	dispositionDeferredExhausted   = "deferred_max_deliver" // scheduled deferral consumed the final delivery
 	dispositionMetadataUnavailable = "metadata_unavailable" // metadata unreadable, routed to DLQ to avoid an endless redelivery loop
 )
 
