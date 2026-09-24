@@ -138,6 +138,13 @@ func (s Spec) IsRoleGated() bool { return s.kind == kindRoleGated }
 
 func (s Spec) IsInstanceGated() bool { return s.kind == kindInstance }
 
+// UsesProject reports whether JWT authentication must resolve x-project-id for
+// this procedure. Organization and instance procedures ignore the global client
+// header so a stale project selection cannot block their control-plane calls.
+func (s Spec) UsesProject() bool {
+	return s.kind == kindProject || (s.kind == kindRoleGated && s.orgSource == OrgFromProject)
+}
+
 // Resource is the enforced resource for a role-gated Spec (empty otherwise).
 func (s Spec) Resource() authz.Resource { return s.resource }
 

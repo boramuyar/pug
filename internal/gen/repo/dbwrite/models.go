@@ -181,6 +181,30 @@ type DashboardTile struct {
 	UpdateTime    pgtype.Timestamptz
 }
 
+type DeletionOperation struct {
+	ID          string
+	TargetType  string
+	TargetID    string
+	TargetName  string
+	OrgID       string
+	ActorID     string
+	Reason      string
+	Status      string
+	RequestedAt pgtype.Timestamptz
+	PurgeAfter  pgtype.Timestamptz
+	StartedAt   pgtype.Timestamptz
+	FinishedAt  pgtype.Timestamptz
+	LastError   string
+}
+
+type DeletionProjectStep struct {
+	OperationID      string
+	ProjectID        string
+	ProjectName      string
+	ClickhouseDoneAt pgtype.Timestamptz
+	PostgresDoneAt   pgtype.Timestamptz
+}
+
 type EmailActionToken struct {
 	ID              string
 	CustomerID      pgtype.Text
@@ -270,6 +294,7 @@ type Project struct {
 	OrgID             string
 	ReportingTimezone string
 	UpdateTime        pgtype.Timestamptz
+	DeletionState     string
 }
 
 type RefreshToken struct {

@@ -66,6 +66,8 @@ var permissionRegistry = map[string]authzspec.Spec{
 	"/dashboard.projects.v1.ProjectsService/Create":               authzspec.OrgGated(authz.ResourceProject, authz.ActionCreate, "interceptor is the coarse gate; the authoritative admin check is race-safe in the CreateProjectAsAdmin CTE"),
 	"/dashboard.projects.v1.ProjectsService/Get":                  authzspec.Project(),
 	"/dashboard.projects.v1.ProjectsService/Delete":               authzspec.ProjGated(authz.ResourceProject, authz.ActionDelete, "admin-only; org resolved from the x-project-id project"),
+	"/dashboard.projects.v1.ProjectsService/ListDeletions":        authzspec.OrgGated(authz.ResourceProject, authz.ActionDelete),
+	"/dashboard.projects.v1.ProjectsService/RetryDeletion":        authzspec.OrgGated(authz.ResourceProject, authz.ActionDelete),
 	"/dashboard.projects.v1.ProjectsService/UpdateMeta":           authzspec.ProjGated(authz.ResourceProject, authz.ActionUpdate, "admin-only; org resolved from the x-project-id project"),
 	"/dashboard.projects.v1.ProjectsService/UpdateFCMServiceJSON": authzspec.ProjGated(authz.ResourceProject, authz.ActionUpdate, "admin-only; org resolved from the x-project-id project"),
 	"/dashboard.projects.v1.ProjectsService/ListApiKeys":          authzspec.ProjGated(authz.ResourceAPIKey, authz.ActionRead, "every role; a private key is only ever returned masked"),
