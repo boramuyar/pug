@@ -33,6 +33,26 @@ type PermanentError struct {
 	metadata map[string]string
 }
 
+// DeferredError asks the worker to redeliver a valid message after a specific
+// delay. It is for scheduled work whose durable message arrived before its
+// execution deadline; it does not consume the normal retry backoff or route the
+// message to the DLQ as a processing failure.
+type DeferredError struct {
+	delay time.Duration
+}
+
+// DeferFor returns an error that makes the worker NakWithDelay the message.
+// Callers must provide a positive duration.
+func DeferFor(delay time.Duration) *DeferredError {
+	if delay <= 0 {
+		panic("nats: DeferFor called with non-positive delay")
+	}
+	return &DeferredError{delay: delay}
+}
+
+func (e *DeferredError) Error() string        { return "message deferred for " + e.delay.String() }
+func (e *DeferredError) Delay() time.Duration { return e.delay }
+
 // NewPermanentError wraps err as a PermanentError. Panics if err is nil.
 func NewPermanentError(err error) *PermanentError {
 	if err == nil {
@@ -363,7 +383,21 @@ func (w *natsWorker) handleMessage(ctx context.Context, msg jetstream.Msg) {
 	// slogx.Error(err) as annotation — it is a different log line than the
 	// processor's source log (different message, different fact), so attaching
 	// the cause is not "re-logging the same error" per the convention.
-	switch err := w.processor(procCtx, msg); {
+	err := w.processor(procCtx, msg)
+	deferred, _ := errors.AsType[*DeferredError](err)
+	switch {
+	case deferred != nil:
+		slog.InfoContext(procCtx, "deferring scheduled message",
+			slog.String("stream", w.config.StreamName),
+			slog.String("consumer", w.config.ConsumerName),
+			slog.Duration("redelivery_delay", deferred.Delay()))
+		if nakErr := msg.NakWithDelay(deferred.Delay()); nakErr != nil {
+			slog.ErrorContext(procCtx, "failed to defer scheduled message",
+				slog.String("stream", w.config.StreamName),
+				slog.Duration("redelivery_delay", deferred.Delay()),
+				slogx.Error(nakErr))
+			telemetry.RecordError(procCtx, nakErr)
+		}
 	case IsPermanentError(err):
 		slog.ErrorContext(procCtx, "terminating poison message",
 			slog.String("stream", w.config.StreamName),
