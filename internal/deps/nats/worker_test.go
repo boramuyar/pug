@@ -285,7 +285,7 @@ func TestHandleMessageNaksWithBackoffOnNonLastFailure(t *testing.T) {
 }
 
 func TestHandleMessageDefersScheduledWorkWithoutDLQ(t *testing.T) {
-	m := &fakeMsg{subject: "s.sub", meta: &jetstream.MsgMetadata{NumDelivered: 3}}
+	m := &fakeMsg{subject: "s.sub", meta: &jetstream.MsgMetadata{NumDelivered: 1}}
 	js := &fakeJetStream{}
 	w := newTestWorker(func(context.Context, jetstream.Msg) error {
 		return DeferFor(24 * time.Hour)
@@ -298,6 +298,26 @@ func TestHandleMessageDefersScheduledWorkWithoutDLQ(t *testing.T) {
 	}
 	if m.ackCalls != 0 || m.termCalls != 0 || len(js.published) != 0 {
 		t.Fatalf("scheduled work used terminal disposition: ack=%d term=%d dlq=%d", m.ackCalls, m.termCalls, len(js.published))
+	}
+}
+
+func TestHandleMessageDeadLettersDeferredWorkOnLastDelivery(t *testing.T) {
+	m := &fakeMsg{subject: "s.sub", meta: &jetstream.MsgMetadata{NumDelivered: 3}}
+	js := &fakeJetStream{}
+	w := newTestWorker(func(context.Context, jetstream.Msg) error {
+		return DeferFor(24 * time.Hour)
+	}, js)
+
+	w.handleMessage(context.Background(), m)
+
+	if len(js.published) != 1 {
+		t.Fatalf("DLQ published = %d, want 1", len(js.published))
+	}
+	if m.termCalls != 1 {
+		t.Fatalf("termCalls = %d, want 1", m.termCalls)
+	}
+	if m.nakCalls != 0 {
+		t.Fatalf("nakCalls = %d, want 0 (no delivery remains)", m.nakCalls)
 	}
 }
 
